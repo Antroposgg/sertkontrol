@@ -78,6 +78,7 @@ flowchart TB
 | `docker build --no-cache` с таймером ≤ 240 с | `scripts/ci/docker-build.sh` |
 | Стек одной командой + `/healthz` | `scripts/ci/compose-smoke.sh` |
 | Секреты | `scripts/dev.sh scripts/ci/gitleaks.sh` |
+| Все ворота одной командой (нужен только Docker) | `scripts/gate.sh` |
 | Запуск стека | `docker compose up --build` → http://localhost:8080/healthz |
 
 Пресеты CMake — `CMakePresets.json`: `gcc-release`, `clang-asan`, `coverage`, `tidy`, `docker`. Сборка — в `build/<пресет>`.
