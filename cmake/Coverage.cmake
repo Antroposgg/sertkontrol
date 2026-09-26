@@ -1,0 +1,7 @@
+if(SK_COVERAGE)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(FATAL_ERROR "SK_COVERAGE поддержан только для GCC (gcovr)")
+  endif()
+  add_compile_options(--coverage -O0 -g)
+  add_link_options(--coverage)
+endif()

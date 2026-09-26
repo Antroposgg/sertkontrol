@@ -1,0 +1,13 @@
+build/
+.cache/
+compile_commands.json
+web/node_modules/
+web/dist/
+web/coverage/
+web/*.tsbuildinfo
+.env
+*.swp
+.idea/
+.vscode/
+# Исходные PDF организаторов и архитектуры: в репозитории — их Markdown-версии.
+docs/source/

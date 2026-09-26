@@ -1,0 +1,78 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "gcc-release",
+      "displayName": "GCC 13, Release, -Werror",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-13",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "clang-asan",
+      "displayName": "clang 18, ASan + UBSan",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SK_SANITIZE": "ON"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "GCC 13, покрытие gcov",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-13",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SK_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "tidy",
+      "displayName": "clang 18, compile_commands для clang-tidy",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "docker",
+      "displayName": "Сборка образа: Release, unity, без тестов",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_UNITY_BUILD": "ON",
+        "BUILD_TESTING": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gcc-release", "configurePreset": "gcc-release" },
+    { "name": "clang-asan", "configurePreset": "clang-asan" },
+    { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "tidy", "configurePreset": "tidy" },
+    { "name": "docker", "configurePreset": "docker" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "repeat": { "mode": "until-fail", "count": 2 }, "noTestsAction": "error" }
+    },
+    { "name": "gcc-release", "inherits": "base", "configurePreset": "gcc-release" },
+    { "name": "clang-asan", "inherits": "base", "configurePreset": "clang-asan" },
+    { "name": "coverage", "inherits": "base", "configurePreset": "coverage" }
+  ]
+}
