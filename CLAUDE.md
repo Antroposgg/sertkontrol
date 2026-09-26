@@ -62,23 +62,25 @@ flowchart TB
 
 ## Команды
 
-Все проверки — скрипты `scripts/ci/*.sh`; CI вызывает их же. Локально без установленных пакетов — через dev-контейнер
-(`ubuntu:24.04` + все apt-зависимости): `scripts/dev.sh <команда>`.
+Все проверки — скрипты `scripts/ci/*.sh`; CI вызывает их же. Основной способ — **запуск напрямую на хосте**
+(Ubuntu 24.04 с пакетами из `docker/apt-build-deps.txt` и `docker/apt-dev-tools.txt`, установка — `scripts/ci/install-deps.sh build dev`;
+Node.js 24 — через nvm). Без установленных пакетов любую команду можно выполнить в dev-контейнере (`ubuntu:24.04` + те же пакеты):
+`scripts/dev.sh <команда>`.
 
 | Что | Команда |
 |---|---|
-| Сборка + тесты GCC 13 Release (тесты ×2) | `scripts/dev.sh scripts/ci/cpp-build-test.sh gcc-release` |
-| Сборка + тесты clang 18 ASan/UBSan | `scripts/dev.sh scripts/ci/cpp-build-test.sh clang-asan` |
-| Покрытие C++ (gcovr, ≥ 70% строк libs/ + apps/) | `scripts/dev.sh scripts/ci/cpp-coverage.sh` → `build/coverage/report/index.html` |
-| clang-format (проверка / исправление) | `scripts/dev.sh scripts/ci/cpp-format-check.sh [--fix]` |
-| clang-tidy | `scripts/dev.sh scripts/ci/cpp-tidy.sh` |
+| Сборка + тесты GCC 13 Release (тесты ×2) | `scripts/ci/cpp-build-test.sh gcc-release` |
+| Сборка + тесты clang 18 ASan/UBSan | `scripts/ci/cpp-build-test.sh clang-asan` |
+| Покрытие C++ (gcovr, ≥ 70% строк libs/ + apps/) | `scripts/ci/cpp-coverage.sh` → `build/coverage/report/index.html` |
+| clang-format (проверка / исправление) | `scripts/ci/cpp-format-check.sh [--fix]` |
+| clang-tidy | `scripts/ci/cpp-tidy.sh` |
 | Запреты импорта | `scripts/ci/deps-check.sh` |
 | Миграции на чистом PG 16 | `scripts/ci/db-migrations.sh` |
-| Web: lint, tsc, тесты ≥ 70% (×2), build | `docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src node:24-slim scripts/ci/web.sh` |
+| Web: lint, tsc, тесты ≥ 70% (×2), build | `scripts/ci/web.sh` (без Node: `docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src node:24-slim scripts/ci/web.sh`) |
 | `docker build --no-cache` с таймером ≤ 240 с | `scripts/ci/docker-build.sh` |
 | Стек одной командой + `/healthz` | `scripts/ci/compose-smoke.sh` |
-| Секреты | `scripts/dev.sh scripts/ci/gitleaks.sh` |
-| Все ворота одной командой (нужен только Docker) | `scripts/gate.sh` |
+| Секреты | `scripts/ci/gitleaks.sh` |
+| Все ворота одной командой (C++ и web — в контейнерах, нужен только Docker) | `scripts/gate.sh` |
 | Запуск стека | `docker compose up --build` → http://localhost:8080/healthz |
 
 Пресеты CMake — `CMakePresets.json`: `gcc-release`, `clang-asan`, `coverage`, `tidy`, `docker`. Сборка — в `build/<пресет>`.
