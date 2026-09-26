@@ -20,6 +20,8 @@ done
 deny "libs/canon не зависит от snapshot/verify" libs/canon 'snapshot/|verify/'
 deny "libs/snapshot не зависит от verify/recog" libs/snapshot 'verify/|recog/'
 deny "libs/verify не зависит от recog/maxapi" libs/verify 'recog/|maxapi/'
+# maxapi — транспорт: не знает о домене и данных.
+deny "libs/maxapi не зависит от домена" libs/maxapi 'snapshot/|verify/|recog/|domain\.hpp|fake_domain'
 # ingest не зависит от certd.
 deny "apps/ingest не зависит от apps/certd" apps/ingest 'domain\.hpp|fake_domain|health\.hpp|drogon/'
 # Бот ходит в домен только через DomainService (C6).

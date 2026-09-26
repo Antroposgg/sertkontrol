@@ -1,4 +1,5 @@
 find_package(GTest CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 include(GoogleTest)
 
 # sk_add_test(<имя> <исходники...> LIBS <цели...>)
@@ -39,6 +40,17 @@ sk_add_test(recog_test
   recog/recog_test.cpp
   LIBS sk::recog sk::canon)
 target_compile_definitions(recog_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+sk_add_test(maxapi_test
+  maxapi/auth_test.cpp
+  maxapi/update_message_test.cpp
+  LIBS sk::maxapi OpenSSL::Crypto)
+target_compile_definitions(maxapi_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+# Отдельный бинарь: поднимает drogon::app() (синглтон процесса) как локальный «MAX».
+sk_add_test(maxapi_http_test
+  maxapi/http_bot_api_test.cpp
+  LIBS sk::maxapi)
 
 sk_add_test(certd_test
   certd/config_test.cpp

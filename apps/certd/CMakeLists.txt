@@ -1,5 +1,3 @@
-sk_find_drogon()
-
 # Ядро certd без main: тестируется напрямую (tests/certd).
 add_library(sk_certd_core STATIC
   config.cpp

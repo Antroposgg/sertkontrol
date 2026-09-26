@@ -17,6 +17,7 @@ include(cmake/Warnings.cmake)
 include(cmake/Sanitizers.cmake)
 include(cmake/Coverage.cmake)
 include(cmake/FindDrogonCompat.cmake)
+sk_find_drogon()
 
 # Порядок сверху вниз повторяет граф зависимостей АРХ §5: нижние модули не знают о верхних.
 add_subdirectory(libs/contracts)
@@ -24,6 +25,7 @@ add_subdirectory(libs/canon)
 add_subdirectory(libs/snapshot)
 add_subdirectory(libs/verify)
 add_subdirectory(libs/recog)
+add_subdirectory(libs/maxapi)
 add_subdirectory(apps/ingest)
 add_subdirectory(apps/certd)
 
