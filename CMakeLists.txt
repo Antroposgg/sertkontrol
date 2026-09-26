@@ -20,6 +20,8 @@ include(cmake/FindDrogonCompat.cmake)
 
 # Порядок сверху вниз повторяет граф зависимостей АРХ §5: нижние модули не знают о верхних.
 add_subdirectory(libs/contracts)
+add_subdirectory(libs/canon)
+add_subdirectory(libs/snapshot)
 add_subdirectory(apps/ingest)
 add_subdirectory(apps/certd)
 

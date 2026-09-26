@@ -17,6 +17,18 @@ sk_add_test(contracts_test
   contracts/fakes_test.cpp
   LIBS sk::fakes)
 
+sk_add_test(canon_test
+  canon/golden_test.cpp
+  canon/canon_test.cpp
+  LIBS sk::canon)
+target_compile_definitions(canon_test PRIVATE SK_CANON_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/canon_golden.tsv")
+
+sk_add_test(snapshot_test
+  snapshot/snapshot_test.cpp
+  LIBS sk::snapshot sk::fakes)
+target_include_directories(snapshot_test PRIVATE ${XXHASH_INCLUDE_DIR})
+target_link_libraries(snapshot_test PRIVATE ${XXHASH_LIBRARY})
+
 sk_add_test(certd_test
   certd/config_test.cpp
   certd/health_test.cpp
