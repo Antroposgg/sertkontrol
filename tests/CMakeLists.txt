@@ -35,6 +35,11 @@ sk_add_test(verify_test
   LIBS sk::verify)
 target_compile_definitions(verify_test PRIVATE SK_RULES_MD="${PROJECT_SOURCE_DIR}/docs/rules.md")
 
+sk_add_test(recog_test
+  recog/recog_test.cpp
+  LIBS sk::recog sk::canon)
+target_compile_definitions(recog_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
 sk_add_test(certd_test
   certd/config_test.cpp
   certd/health_test.cpp

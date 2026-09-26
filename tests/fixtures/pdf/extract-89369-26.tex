@@ -1,0 +1,22 @@
+% Тестовая фикстура F2: вымышленная «выписка из реестра» с номером из АРХ (89369/26).
+% Страница 1 — текстовый слой с кириллицей (cmap даёт извлекаемый Unicode), страница 2 — QR со ссылкой на реестр.
+% Сборка: pdflatex -interaction=nonstopmode extract-89369-26.tex (texlive: cyrillic, cmap, qrcode).
+\pdfinfoomitdate=1 \pdftrailerid{} \pdfsuppressptexinfo=-1
+\documentclass[a4paper,12pt]{article}
+\usepackage{cmap}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{qrcode}
+\pagestyle{empty}
+\begin{document}
+\begin{center}\textbf{ВЫПИСКА ИЗ ЕДИНОГО РЕЕСТРА (ТЕСТОВЫЕ ДАННЫЕ)}\end{center}
+Регистрационный номер декларации о соответствии: ЕАЭС N RU Д-CR.РА08.В.89369/26
+
+Дата регистрации: 10.02.2026. Действует до: 09.02.2031.
+
+Заявитель: ООО «ТЕСТОВЫЙ ИМПОРТЁР», ИНН 7700000016.
+\newpage
+Проверить сведения можно по QR-коду:
+
+\qrcode[height=4cm]{https://pub.fsa.gov.ru/rds/declaration/view/21950326/common}
+\end{document}
