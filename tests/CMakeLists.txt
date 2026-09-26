@@ -33,6 +33,7 @@ target_link_libraries(snapshot_test PRIVATE ${XXHASH_LIBRARY})
 sk_add_test(verify_test
   verify/rules_test.cpp
   verify/text_test.cpp
+  verify/inn_test.cpp
   LIBS sk::verify)
 target_compile_definitions(verify_test PRIVATE SK_RULES_MD="${PROJECT_SOURCE_DIR}/docs/rules.md")
 
@@ -56,7 +57,21 @@ sk_add_test(certd_test
   certd/config_test.cpp
   certd/health_test.cpp
   certd/fake_domain_test.cpp
+  certd/rest_api_test.cpp
+  certd/bot_test.cpp
+  certd/components_test.cpp
+  LIBS sk::certd_core OpenSSL::Crypto)
+
+find_package(yaml-cpp REQUIRED)
+sk_add_test(openapi_test
+  certd/openapi_test.cpp
+  LIBS sk::certd_core yaml-cpp)
+target_compile_definitions(openapi_test PRIVATE SK_OPENAPI_YAML="${PROJECT_SOURCE_DIR}/openapi.yaml")
+
+sk_add_test(certd_pg_test
+  certd/pg_test.cpp
   LIBS sk::certd_core)
+target_compile_definitions(certd_pg_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
 sk_add_test(ingest_test
   ingest/cli_test.cpp

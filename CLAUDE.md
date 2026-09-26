@@ -125,6 +125,9 @@ C6 — `apps/certd/domain.hpp`; C7 — `openapi.yaml` (этап 1); C8, C9 — `
 - C++20, GCC 13 и clang 18, `-Wall -Wextra -Wpedantic -Werror` + `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast` и др. (`cmake/Warnings.cmake`). `.clang-format` (Google, 110 колонок), `.clang-tidy` (все проверки — ошибки).
 - Ошибки домена — `sk::Result<T>` / `sk::Error`, не исключения. Исключения — только для ошибок программиста.
 - Корутины (`drogon::Task`): параметры по значению; не лямбды с захватом.
+- Никакого `?:` в выражении с `co_await` (ни в аргументах, ни вокруг): GCC 13 вычисляет обе ветки
+  (найдено тестом `BotTest.WatchAndUnwatch` — `r.value()` вызывался при ошибке). Вычислите значение отдельным
+  оператором до `co_await`.
 - Поля агрегатов — с инициализатором по умолчанию (`{}`).
 - Публичный API — doxygen (`///`) в C++, JSDoc (`/** */`) в TS. Комментарии объясняют «почему» со ссылкой на АРХ §… или ADR.
 - TS: `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes`; ESLint `strictTypeChecked`, 0 предупреждений.

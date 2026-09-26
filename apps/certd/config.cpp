@@ -1,5 +1,6 @@
 #include "config.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cstdlib>
 #include <limits>
@@ -30,6 +31,13 @@ Result<std::uint64_t> get_uint(const EnvLookup& env, std::string_view name, std:
                                                   "], получено «" + *value + "»"};
   }
   return parsed;
+}
+
+bool secret_format_ok(std::string_view s) {
+  return s.size() >= 5 && s.size() <= 256 && std::ranges::all_of(s, [](char c) {
+           return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' ||
+                  c == '-';
+         });
 }
 
 }  // namespace
@@ -88,6 +96,38 @@ Result<Config> load_config(const EnvLookup& env) {
   }
   cfg.snapshot_dir = get_or(env, "SNAPSHOT_DIR", cfg.snapshot_dir.string());
   cfg.web_root = get_or(env, "WEB_ROOT", cfg.web_root.string());
+
+  cfg.max_bot_token = get_or(env, "MAX_BOT_TOKEN", "");
+  cfg.max_webhook_secret = get_or(env, "MAX_WEBHOOK_SECRET", "");
+  cfg.max_bot_username = get_or(env, "MAX_BOT_USERNAME", "");
+  cfg.max_api_base_url = get_or(env, "MAX_API_BASE_URL", cfg.max_api_base_url);
+  if (!cfg.max_webhook_secret.empty() && !secret_format_ok(cfg.max_webhook_secret)) {
+    return Error{ErrorCode::kInvalidArgument, "MAX_WEBHOOK_SECRET: 5–256 символов A-Z, a-z, 0-9, _ и -"};
+  }
+  if (cfg.bot_enabled() && cfg.max_webhook_secret.empty()) {
+    return Error{ErrorCode::kInvalidArgument, "MAX_WEBHOOK_SECRET обязателен, если задан MAX_BOT_TOKEN"};
+  }
+  const auto dev = get_uint(env, "CERTD_DEV_USER_ID", 0, 0, std::numeric_limits<std::int64_t>::max());
+  if (!dev) {
+    return dev.error();
+  }
+  if (dev.value() != 0) {
+    // ADR-0013: вход без initData возможен только там, где подпись проверить нечем.
+    if (cfg.bot_enabled()) {
+      return Error{ErrorCode::kInvalidArgument, "CERTD_DEV_USER_ID нельзя задавать вместе с MAX_BOT_TOKEN"};
+    }
+    cfg.dev_user_id = static_cast<std::int64_t>(dev.value());
+  }
+  const auto recog_threads = get_uint(env, "CERTD_RECOG_THREADS", 2, 1, 32);
+  if (!recog_threads) {
+    return recog_threads.error();
+  }
+  const auto queue = get_uint(env, "CERTD_RECOG_QUEUE", 8, 1, 256);
+  if (!queue) {
+    return queue.error();
+  }
+  cfg.recog_threads = static_cast<std::size_t>(recog_threads.value());
+  cfg.recog_queue = static_cast<std::size_t>(queue.value());
   return cfg;
 }
 

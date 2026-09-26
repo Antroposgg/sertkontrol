@@ -54,7 +54,7 @@ class HttpBotApi final : public BotApi {
   drogon::Task<Result<std::vector<std::byte>>> download(std::string url, std::size_t max_bytes) override;
 
  private:
-  drogon::Task<Result<Ok>> post(std::string path_and_query, std::string body) const;
+  [[nodiscard]] drogon::Task<Result<Ok>> post(std::string path_and_query, std::string body) const;
   BotApiConfig config_;
 };
 

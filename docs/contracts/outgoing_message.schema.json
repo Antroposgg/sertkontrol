@@ -38,8 +38,8 @@
             "text": { "type": "string", "minLength": 1 },
             "payload": {
               "type": "string",
-              "pattern": "^[wsynd]:[0-9]+$",
-              "description": "<действие>:<id записи в БД> (АРХ §8): w — на контроль, s — поставщик, y/n — подтверждение OCR, d — удалить."
+              "pattern": "^[wWdchsyn]:[0-9]+$",
+              "description": "<действие>:<id записи в БД> (АРХ §8): w — на контроль (check_log.id), W — все из пачки (check_log.batch_id), d — снять (portfolio_item.id), c — согласие, h — справка; s — поставщик, y/n — подтверждение OCR (зарезервировано)."
             }
           }
         },

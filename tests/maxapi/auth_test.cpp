@@ -8,8 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
+#include "support/init_data.hpp"
 
 namespace sk::maxapi {
 namespace {
@@ -78,28 +77,8 @@ TEST(InitData, Forgeries) {
   EXPECT_EQ(validate_init_data(kInitData, "", now()).error().code, ErrorCode::kUnauthorized);
 }
 
-/// Подпись по официальному алгоритму напрямую через OpenSSL — для строк с заданным набором полей.
-std::string sign(const std::vector<std::pair<std::string, std::string>>& sorted_params) {
-  std::string launch;
-  std::string raw;
-  for (const auto& [k, v] : sorted_params) {
-    launch.append(launch.empty() ? "" : "\n").append(k).append("=").append(v);
-    raw.append(raw.empty() ? "" : "&").append(k).append("=").append(percent_encode(v));
-  }
-  std::array<unsigned char, 32> secret{};
-  std::array<unsigned char, 32> mac{};
-  unsigned int len = 0;
-  HMAC(EVP_sha256(), "WebAppData", 10, reinterpret_cast<const unsigned char*>(kToken.data()),  // NOLINT
-       kToken.size(), secret.data(), &len);
-  HMAC(EVP_sha256(), secret.data(), 32, reinterpret_cast<const unsigned char*>(launch.data()),  // NOLINT
-       launch.size(), mac.data(), &len);
-  std::string hex;
-  for (const auto b : mac) {
-    static constexpr std::string_view kHex = "0123456789abcdef";
-    hex += kHex[b >> 4U];
-    hex += kHex[b & 0x0FU];
-  }
-  return raw + "&hash=" + hex;
+std::string sign(const std::vector<std::pair<std::string, std::string>>& p) {
+  return test::sign_init_data(kToken, p);
 }
 
 TEST(InitData, SignedButIncomplete) {

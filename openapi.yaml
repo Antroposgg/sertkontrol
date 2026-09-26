@@ -1,0 +1,439 @@
+openapi: 3.1.0
+info:
+  title: Сертконтроль — REST API мини-приложения
+  version: 1.0.0
+  summary: Контракт C7 (АРХ §5, §8). Реализация — apps/certd/rest_api.cpp.
+  description: |
+    API для мини-приложения MAX. Мини-приложение и API на одном origin: CORS не нужен, cookie нет.
+
+    **Авторизация.** Каждый запрос `/api/v1/*` несёт сырую строку `window.WebApp.initData` в заголовке
+    `X-Max-Init-Data`. Сервер проверяет HMAC-SHA256 по официальному алгоритму MAX и что `auth_date` не старше 24 ч
+    (ADR-0006). Пользователь определяется только из initData; каждый запрос к данным фильтруется по нему (IDOR).
+
+    **Ошибки** — `application/problem+json` (RFC 9457) с машинным полем `code`.
+
+    **Данные.** В текущей версии все данные реестра — ТЕСТОВЫЕ (демо-снапшот); признак — `is_demo`.
+  license:
+    name: GPL-3.0-or-later
+    identifier: GPL-3.0-or-later
+servers:
+  - url: /
+    description: Тот же origin, что и мини-приложение
+security:
+  - initData: []
+tags:
+  - name: Профиль
+  - name: Проверка
+  - name: Портфель
+  - name: Данные
+  - name: Служебное
+
+paths:
+  /api/v1/me:
+    get:
+      tags: [Профиль]
+      summary: Профиль, счётчики портфеля, флаг демо
+      operationId: getMe
+      responses:
+        '200':
+          description: Профиль. Пользователь создаётся при первом обращении.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/check:
+    get:
+      tags: [Проверка]
+      summary: Вердикт по номеру документа (F1, F3)
+      operationId: checkNumber
+      parameters:
+        - name: number
+          in: query
+          required: true
+          description: Номер в любой раскладке, например «ЕАЭС N RU Д-CR.РА08.В.89369/26». Берётся первый номер из строки.
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Вердикт по первому найденному номеру
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckedVerdict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/NumberNotRecognized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /api/v1/check/file:
+    post:
+      tags: [Проверка]
+      summary: Вердикт по PDF-выписке (F2) — замена сканера QR в веб-клиенте
+      operationId: checkFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF до 20 МБ и 10 страниц. Тип определяется по сигнатуре файла.
+      responses:
+        '200':
+          description: Вердикт по каждому номеру, найденному в файле (QR → текстовый слой)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CheckedVerdict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/FileTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/NumberNotRecognized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /api/v1/portfolio:
+    get:
+      tags: [Портфель]
+      summary: Документы на контроле с фильтрами и курсорной пагинацией (F4)
+      operationId: listPortfolio
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/Status' }
+        - name: supplier_inn
+          in: query
+          schema: { type: string, pattern: '^([0-9]{10}|[0-9]{12})$' }
+        - name: cursor
+          in: query
+          description: Значение `next_cursor` предыдущей страницы
+          schema: { type: string, pattern: '^[0-9]+$' }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Страница портфеля текущего пользователя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Портфель]
+      summary: Поставить документ на контроль (F4)
+      operationId: addToPortfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddRequest' }
+      responses:
+        '201':
+          description: Запись создана; вердикт — на момент постановки
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AddResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/NumberNotRecognized' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /api/v1/portfolio/{id}:
+    delete:
+      tags: [Портфель]
+      summary: Снять документ с контроля (F4)
+      operationId: removeFromPortfolio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9]+$' }
+      responses:
+        '204': { description: Снято }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Записи нет или она чужая — ответы неотличимы (IDOR)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/v1/data-status:
+    get:
+      tags: [Данные]
+      summary: Версия и дата данных реестра
+      operationId: getDataStatus
+      responses:
+        '200':
+          description: Состояние данных
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /healthz:
+    get:
+      tags: [Служебное]
+      summary: Готовность — БД доступна и снапшот загружен
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Готов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: Не готов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+  /max/webhook:
+    post:
+      tags: [Служебное]
+      summary: Webhook бота MAX (не для мини-приложения)
+      description: |
+        Принимает события MAX (`Update`). Секрет подписки — в `X-Max-Bot-Api-Secret`. Повтор события
+        (`m:<mid>`, `c:<callback_id>`, …) отвечает 200 без повторной обработки. Ответ не ждёт обработки.
+      operationId: maxWebhook
+      security:
+        - webhookSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [update_type, timestamp]
+              properties:
+                update_type: { type: string }
+                timestamp: { type: integer, format: int64 }
+      responses:
+        '200': { description: Принято }
+        '400':
+          description: Тело — не событие MAX
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          description: Неверный секрет
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  securitySchemes:
+    initData:
+      type: apiKey
+      in: header
+      name: X-Max-Init-Data
+      description: Сырая строка `window.WebApp.initData`.
+    webhookSecret:
+      type: apiKey
+      in: header
+      name: X-Max-Bot-Api-Secret
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос (`invalid_argument`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Нет или неверная initData (`unauthorized`) либо старше 24 ч (`init_data_expired`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Документ с этим SKU уже на контроле (`conflict`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    FileTooLarge:
+      description: Больше 20 МБ, 10 страниц или 25 Мпикс (`file_too_large`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedMediaType:
+      description: Не PDF (`unsupported_media_type`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NumberNotRecognized:
+      description: Номер не найден в запросе или файле (`number_not_recognized`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: Больше 30 проверок в минуту или очередь распознавания заполнена (`rate_limited`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    SnapshotUnavailable:
+      description: Данные реестра ещё не загружены (`snapshot_unavailable`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          enum: [invalid_argument, unauthorized, init_data_expired, forbidden, not_found, conflict, file_too_large,
+                 unsupported_media_type, number_not_recognized, not_found_in_snapshot, snapshot_unavailable,
+                 rate_limited, internal]
+
+    Status:
+      type: string
+      enum: [unknown, active, suspended, terminated, annulled, archived]
+
+    Me:
+      type: object
+      required: [max_user_id, portfolio_count, is_demo, demo_stage, consented]
+      properties:
+        max_user_id: { type: integer, format: int64 }
+        portfolio_count: { type: integer }
+        is_demo: { type: boolean }
+        demo_stage: { type: string, enum: [base, updated] }
+        consented: { type: boolean }
+
+    Finding:
+      type: object
+      required: [basis, rule, text]
+      properties:
+        basis:
+          type: string
+          enum: [fact, calculation, recommendation]
+          description: «факт / расчёт / рекомендация» (КЕЙС §7 п.3)
+        rule: { type: string, description: 'Идентификатор из docs/rules.md' }
+        text: { type: string }
+
+    Card:
+      type: object
+      required: [kind, status, status_name, applicant_name, applicant_inn, manufacturer_name, product, tnved, registry_url]
+      properties:
+        kind: { type: string, enum: [declaration, certificate] }
+        status: { $ref: '#/components/schemas/Status' }
+        status_name: { type: string, description: 'по-русски: «действует», …' }
+        issue_date: { type: [string, 'null'], format: date }
+        expiry_date: { type: [string, 'null'], format: date }
+        status_date: { type: [string, 'null'], format: date }
+        applicant_name: { type: string }
+        applicant_inn: { type: string }
+        manufacturer_name: { type: string }
+        product: { type: string }
+        tnved: { type: string }
+        registry_url: { type: string, format: uri }
+
+    Verdict:
+      type: object
+      required: [query, number, display_number, level, data_date, snapshot_version, is_demo, distance, card, findings, suggestions]
+      properties:
+        query: { type: string }
+        number: { type: [string, 'null'], description: 'Каноническая форма; null — номер не распознан' }
+        display_number: { type: [string, 'null'], description: 'RU Д-… / RU С-…' }
+        level: { type: string, enum: [ok, warning, problem, not_found, needs_confirmation] }
+        data_date: { type: string, format: date, description: 'Данные реестра на эту дату' }
+        snapshot_version: { type: integer, format: int64 }
+        is_demo: { type: boolean, description: 'Посчитано на тестовых данных' }
+        distance: { type: number }
+        card:
+          oneOf:
+            - $ref: '#/components/schemas/Card'
+            - type: 'null'
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/Finding' }
+        suggestions:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required: [number, display_number, distance]
+            properties:
+              number: { type: string }
+              display_number: { type: string }
+              distance: { type: number }
+
+    CheckedVerdict:
+      allOf:
+        - $ref: '#/components/schemas/Verdict'
+        - type: object
+          required: [check_id]
+          properties:
+            check_id: { type: integer, format: int64 }
+
+    PortfolioItem:
+      type: object
+      required: [id, doc_key, display_number, doc_kind, sku, supplier_inn, last_status, last_version]
+      properties:
+        id: { type: integer, format: int64 }
+        doc_key: { type: string }
+        display_number: { type: string }
+        doc_kind: { type: string, enum: [declaration, certificate] }
+        sku: { type: [string, 'null'] }
+        supplier_inn: { type: [string, 'null'] }
+        last_status: { $ref: '#/components/schemas/Status' }
+        last_version: { type: integer, format: int64 }
+
+    PortfolioPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PortfolioItem' }
+        next_cursor: { type: [string, 'null'] }
+
+    AddRequest:
+      type: object
+      required: [number]
+      properties:
+        number: { type: string, minLength: 1 }
+        sku: { type: [string, 'null'] }
+        supplier_inn:
+          type: [string, 'null']
+          description: 10 или 12 цифр с верными контрольными цифрами (АРХ §7.7)
+
+    AddResult:
+      type: object
+      required: [item, verdict]
+      properties:
+        item: { $ref: '#/components/schemas/PortfolioItem' }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+
+    DataStatus:
+      type: object
+      required: [version, source, source_date, record_count, is_demo, next_update]
+      properties:
+        version: { type: integer, format: int64 }
+        source: { type: string }
+        source_date: { type: string, format: date }
+        record_count: { type: integer }
+        is_demo: { type: boolean }
+        next_update: { type: [string, 'null'], format: date-time, description: 'Ежедневное обновление — этап 2' }
+
+    Health:
+      type: object
+      required: [status, db, snapshot_version]
+      properties:
+        status: { type: string, enum: [ok, unavailable] }
+        db: { type: string, enum: [ok, down] }
+        snapshot_version: { type: [integer, 'null'] }

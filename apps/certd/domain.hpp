@@ -20,9 +20,16 @@
 
 namespace sk::certd {
 
+/// Откуда пришёл запрос — пишется в `check_log.via`.
+enum class Channel : std::uint8_t {
+  kBot,  ///< Чат-бот MAX.
+  kApp,  ///< Мини-приложение (REST).
+};
+
 /// Кто делает запрос. Строится из проверенного initData (REST) или события webhook (бот).
 struct UserContext {
   std::int64_t max_user_id{0};  ///< ID пользователя в MAX.
+  Channel channel{Channel::kApp};
 };
 
 /// Стадия демо-сценария пользователя (`app_user.demo_stage`, АРХ §4 «Демо-вариант потока B»).
@@ -37,6 +44,20 @@ struct Me {
   std::size_t portfolio_count{0};
   bool is_demo{true};
   DemoStage demo_stage{DemoStage::kBase};
+  bool consented{false};  ///< Дал согласие на обработку данных (АРХ §10).
+};
+
+/// Вердикт вместе с id строки `check_log` — аргумент кнопки «На контроль» (`w:<check_id>`, АРХ §8).
+struct CheckedVerdict {
+  std::int64_t check_id{0};
+  verify::Verdict verdict{};
+};
+
+/// Результат проверки одного сообщения или файла.
+struct CheckResult {
+  std::int64_t batch_id{
+      0};  ///< Общий id проверок из одного запроса — аргумент «Поставить все» (`W:<batch_id>`).
+  std::vector<CheckedVerdict> verdicts{};
 };
 
 /// Документ на контроле.
@@ -78,6 +99,12 @@ struct AddResult {
   verify::Verdict verdict{};
 };
 
+/// Результат «поставить все на контроль».
+struct BatchAddResult {
+  std::size_t added{0};
+  std::size_t already{0};  ///< Уже были на контроле.
+};
+
 /// Загруженный файл. Хранится только в памяти, на диск не пишется (АРХ §6 «Хранение»).
 struct FileUpload {
   std::vector<std::byte> bytes{};
@@ -93,7 +120,7 @@ struct DataStatus {
   bool is_demo{true};
 };
 
-/// C6 — доменный сервис. Реализации: `FakeDomainService` (этап 0), `DomainServiceImpl` (этап 1).
+/// C6 — доменный сервис. Реализации: `DomainServiceImpl` (PostgreSQL + снапшот), `FakeDomainService` (тесты).
 class DomainService {
  public:
   DomainService() = default;
@@ -106,13 +133,14 @@ class DomainService {
   /// Профиль и счётчики. Создаёт пользователя при первом обращении.
   virtual drogon::Task<Result<Me>> me(UserContext user) = 0;
 
-  /// Проверка номеров из текста (до 20). F1, F3.
-  virtual drogon::Task<Result<std::vector<verify::Verdict>>> check_text(UserContext user,
-                                                                        std::string text) = 0;
+  /// Согласие на обработку данных (кнопка «Согласен» в боте).
+  virtual drogon::Task<Result<Ok>> give_consent(UserContext user) = 0;
+
+  /// Проверка номеров из текста (до 20). F1, F3. Нет номеров — `kNumberNotRecognized`.
+  virtual drogon::Task<Result<CheckResult>> check_text(UserContext user, std::string text) = 0;
 
   /// Проверка файла: распознавание (C5) и вердикт по каждому номеру. F2, F3.
-  virtual drogon::Task<Result<std::vector<verify::Verdict>>> check_file(UserContext user,
-                                                                        FileUpload file) = 0;
+  virtual drogon::Task<Result<CheckResult>> check_file(UserContext user, FileUpload file) = 0;
 
   /// Список портфеля пользователя. Видны только его записи (защита от IDOR, АРХ §10). F4.
   virtual drogon::Task<Result<Page<PortfolioItem>>> list_portfolio(UserContext user,
@@ -120,6 +148,12 @@ class DomainService {
 
   /// Поставить на контроль. Повтор той же пары (номер, SKU) → `kConflict`. F4.
   virtual drogon::Task<Result<AddResult>> add_to_portfolio(UserContext user, AddRequest request) = 0;
+
+  /// Поставить на контроль номер из своей проверки `check_log.id`. Чужая или несуществующая — `kNotFound`.
+  virtual drogon::Task<Result<AddResult>> add_checked(UserContext user, std::int64_t check_id) = 0;
+
+  /// Поставить на контроль все номера из своей пачки проверок.
+  virtual drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) = 0;
 
   /// Снять с контроля. Чужой или несуществующий id → `kNotFound`. F4.
   virtual drogon::Task<Result<Ok>> remove_from_portfolio(UserContext user, std::int64_t item_id) = 0;

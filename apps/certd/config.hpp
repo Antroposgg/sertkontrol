@@ -22,6 +22,22 @@ struct Config {
   std::size_t db_connections{4};
   std::filesystem::path snapshot_dir{"/data/snapshots"};
   std::filesystem::path web_root{"/srv/app"};  ///< Статика мини-приложения (`web/dist`).
+
+  // ── MAX ──
+  std::string max_bot_token{};  ///< Пусто — бот и проверка initData выключены.
+  std::string max_webhook_secret{};  ///< Обязателен, если задан токен: `[A-Za-z0-9_-]{5,256}` (dev.max.ru).
+  std::string max_bot_username{};  ///< Публичное имя бота — для кнопок `open_app`.
+  std::string max_api_base_url{"https://platform-api2.max.ru"};
+
+  /// Пользователь мини-приложения без MAX (локальный запуск). Только при пустом токене — ADR-0013.
+  std::optional<std::int64_t> dev_user_id{};
+
+  // ── Распознавание ──
+  std::size_t recog_threads{2};
+  std::size_t recog_queue{8};  ///< Одновременных задач сверх — «попробуйте через минуту».
+
+  /// Бот включён (есть токен и секрет).
+  [[nodiscard]] bool bot_enabled() const noexcept { return !max_bot_token.empty(); }
 };
 
 /// Источник переменных окружения; инъекция для тестов.

@@ -5,6 +5,10 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-26 | C9 | Действия callback: добавлены `W` (все из пачки), `c` (согласие), `h` (справка); `s`, `y`, `n` зарезервированы | Сводка «Поставить все на контроль», согласие при старте (АРХ §8, §10) | 1 |
+| 2026-09-26 | C8 | Миграция `0002`: `check_log.batch_id` | Аргумент кнопки «Поставить все» — id пачки проверок, а не список номеров (АРХ §8) | 1 |
+| 2026-09-26 | C7 | Первая редакция `openapi.yaml` (OpenAPI 3.1): `/me`, `/check`, `/check/file`, `/portfolio` (GET/POST), `/portfolio/{id}` (DELETE), `/data-status`, `/healthz`, `/max/webhook` | Этап 1 | 1 |
+| 2026-09-26 | C6 | `UserContext.channel`; `check_text/check_file` → `CheckResult {batch_id, CheckedVerdict[]}`; новые `give_consent`, `add_checked`, `add_batch`; `Me.consented` | Кнопкам бота нужен id проверки (АРХ §8), согласие на обработку данных (АРХ §10), `check_log.via` | 1 |
 | 2026-09-26 | C3 | В `RawRecord` добавлено поле `suspended_until` | Статус «приостановлен до …» есть в записи снапшота (C2) и в правиле `status.suspended` | 1 |
 | 2026-09-26 | C1–C9 | Первая редакция: `libs/contracts/include/sertkontrol_contracts.hpp` (C1, C2, C4, C5), `apps/ingest/source_adapter.hpp` (C3), `apps/certd/domain.hpp` (C6), `db/migrations/0001_init.sql` (C8, C9), `docs/contracts/outgoing_message.schema.json` (C9). C7 (`openapi.yaml`) — этап 1 | Каркас | 0 |
 | 2026-09-26 | C1 | Добавлена `canon::find_numbers(text, max_count)` сверх перечня АРХ (`canonicalize`, `parse`, `key_hash`) | F1: до 20 номеров в одном сообщении — выделение кандидатов из свободного текста принадлежит грамматике номера | 0 |

@@ -35,9 +35,9 @@ TEST_F(FakeDomainTest, CheckTextReturnsVerdictPerNumber) {
   const auto r =
       drogon::sync_wait(svc.check_text(kAlice, "RU D-CR.PA08.B.89369/26\nRU C-RU.AB12.B.00017/24"));
   ASSERT_TRUE(r);
-  ASSERT_EQ(r.value().size(), 2U);
-  EXPECT_EQ(r.value()[0].level, verify::Level::kOk);
-  EXPECT_EQ(r.value()[1].level, verify::Level::kProblem);
+  ASSERT_EQ(r.value().verdicts.size(), 2U);
+  EXPECT_EQ(r.value().verdicts[0].verdict.level, verify::Level::kOk);
+  EXPECT_EQ(r.value().verdicts[1].verdict.level, verify::Level::kProblem);
 }
 
 TEST_F(FakeDomainTest, CheckTextWithoutNumbers) {
@@ -53,7 +53,7 @@ TEST_F(FakeDomainTest, CheckTextLimitsTo20Numbers) {
   }
   const auto r = drogon::sync_wait(svc.check_text(kAlice, text));
   ASSERT_TRUE(r);
-  EXPECT_EQ(r.value().size(), FakeDomainService::kMaxNumbersPerMessage);
+  EXPECT_EQ(r.value().verdicts.size(), FakeDomainService::kMaxNumbersPerMessage);
 }
 
 TEST_F(FakeDomainTest, CheckFile) {
@@ -62,8 +62,8 @@ TEST_F(FakeDomainTest, CheckFile) {
   std::ranges::transform(pdf, file.bytes.begin(), [](char c) { return static_cast<std::byte>(c); });
   const auto r = drogon::sync_wait(svc.check_file(kAlice, file));
   ASSERT_TRUE(r);
-  ASSERT_EQ(r.value().size(), 1U);
-  EXPECT_EQ(r.value()[0].level, verify::Level::kOk);
+  ASSERT_EQ(r.value().verdicts.size(), 1U);
+  EXPECT_EQ(r.value().verdicts[0].verdict.level, verify::Level::kOk);
 
   const auto bad = drogon::sync_wait(svc.check_file(kAlice, FileUpload{}));
   ASSERT_FALSE(bad);
@@ -149,7 +149,7 @@ TEST_F(FakeDomainTest, DemoStageSwitchesSnapshotPerUser) {
   EXPECT_EQ(drogon::sync_wait(svc.data_status(kBob)).value().version, 1U);
 
   const auto v = drogon::sync_wait(svc.check_text(kAlice, "RUD-CR.PA08.B.89369/26"));
-  EXPECT_EQ(v.value()[0].level, verify::Level::kProblem);
+  EXPECT_EQ(v.value().verdicts[0].verdict.level, verify::Level::kProblem);
 
   ASSERT_TRUE(drogon::sync_wait(svc.reset_demo(kAlice)));
   const auto status = drogon::sync_wait(svc.data_status(kAlice)).value();
