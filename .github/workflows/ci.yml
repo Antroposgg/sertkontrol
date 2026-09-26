@@ -1,0 +1,95 @@
+# CI (АРХ §10). Каждый шаг вызывает scripts/ci/*.sh — те же команды гоняются локально
+# через scripts/dev.sh (CLAUDE.md, «Ворота-проверка»). Красный CI блокирует слияние в main.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpp-gcc:
+    name: C++ · GCC 13 Release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/cpp-build-test.sh gcc-release
+
+  cpp-clang-asan:
+    name: C++ · clang 18 ASan/UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/cpp-build-test.sh clang-asan
+
+  cpp-lint:
+    name: C++ · зависимости, clang-format, clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/deps-check.sh
+      - run: scripts/ci/cpp-format-check.sh
+      - run: scripts/ci/cpp-tidy.sh
+
+  cpp-coverage:
+    name: C++ · покрытие ≥ 70%
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/cpp-coverage.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpp-coverage
+          path: build/coverage/report/
+
+  db-migrations:
+    name: БД · миграции PostgreSQL 16
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/db-migrations.sh
+
+  web:
+    name: web · eslint, tsc, vitest ≥ 70%, build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: scripts/ci/web.sh
+
+  docker:
+    name: Docker · build ≤ 4 мин и compose up
+    runs-on: ubuntu-24.04
+    env:
+      # Зеркало рядом с раннером GitHub (ADR-0011); по умолчанию в образе — зеркало в РФ.
+      APT_MIRROR: http://azure.archive.ubuntu.com/ubuntu
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/docker-build.sh
+      - run: scripts/ci/compose-smoke.sh
+
+  gitleaks:
+    name: Секреты · gitleaks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/ci/install-deps.sh dev
+      - run: scripts/ci/gitleaks.sh
