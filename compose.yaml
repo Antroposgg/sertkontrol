@@ -1,0 +1,108 @@
+# Все локальные компоненты одной командой: docker compose up --build
+# Переменные — .env (шаблон .env.example); без .env стек тоже поднимается локально.
+name: sertkontrol
+
+x-pg-env: &pg-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-sertkontrol}
+  POSTGRES_USER: ${POSTGRES_USER:-sertkontrol}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sertkontrol}
+      POSTGRES_USER: ${POSTGRES_USER:-sertkontrol}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      # Локально порт наружу не публикуется, поэтому trust допустим (ADR-0009).
+      # На VPS: задать POSTGRES_PASSWORD и POSTGRES_HOST_AUTH_METHOD=scram-sha-256.
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-trust}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:-sertkontrol}
+      PGUSER: ${POSTGRES_USER:-sertkontrol}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["sh", "/db/migrate.sh"]
+    restart: "no"
+
+  certd:
+    build: &build
+      context: .
+      args:
+        APT_MIRROR: ${APT_MIRROR:-http://mirror.yandex.ru/ubuntu}
+    image: sertkontrol:local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *pg-env
+      CERTD_PORT: "8080"
+      SNAPSHOT_DIR: /data/snapshots
+      WEB_ROOT: /srv/app
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+    ports:
+      - "${CERTD_PUBLISH_PORT:-8080}:8080"
+    volumes:
+      - snapshots:/data/snapshots:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  ingest:
+    build: *build
+    image: sertkontrol:local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    entrypoint: ["ingest"]
+    # Этап 0: заглушка. С этапа 1 собирает демо-пару N/N+1 при старте (docs/plan.md, противоречие 1).
+    command: ["--demo", "--snapshot-dir", "/data/snapshots", "--demo-dir", "/opt/sertkontrol/demo"]
+    environment:
+      <<: *pg-env
+    volumes:
+      - snapshots:/data/snapshots
+      - sources:/data/sources
+    restart: "no"
+
+  caddy:
+    profiles: ["prod"]
+    image: caddy:2
+    depends_on:
+      - certd
+    environment:
+      SK_DOMAIN: ${SK_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  snapshots:
+  sources:
+  caddy_data:

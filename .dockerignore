@@ -1,0 +1,17 @@
+# Контекст сборки — только то, что нужно Dockerfile.
+.git
+.github
+.env
+.env.*
+!.env.example
+build/
+**/node_modules
+web/dist
+web/coverage
+docs/
+tests/
+fuzz/
+bench/
+scripts/
+*.md
+!data/demo/**

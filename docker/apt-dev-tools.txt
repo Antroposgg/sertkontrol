@@ -1,0 +1,13 @@
+# Инструменты разработки и CI: второй компилятор, линтеры, тесты, покрытие, секреты.
+clang-18
+clang-tidy-18
+clang-format-18
+libclang-rt-18-dev
+libgtest-dev
+libgmock-dev
+libbenchmark-dev
+gcovr
+gitleaks
+git
+curl
+postgresql-client-16

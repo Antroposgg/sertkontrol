@@ -1,0 +1,12 @@
+# Рантайм-зависимости образа certd/ingest (только .so, АРХ §10).
+libdrogon1t64
+libpoppler-cpp0t64
+libzxing3
+libtesseract5
+tesseract-ocr-rus
+libxxhash0
+libexpat1
+libsimdjson19
+ca-certificates
+tzdata
+curl

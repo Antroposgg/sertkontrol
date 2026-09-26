@@ -1,0 +1,5 @@
+# TLS для webhook MAX и мини-приложения (MAX требует HTTPS). Только профиль prod на VPS.
+{$SK_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy certd:8080
+}

@@ -1,0 +1,26 @@
+# Сборочные зависимости C++ (Ubuntu 24.04). Единый источник для Dockerfile, CI и dev-образа.
+# Имена и версии проверены `apt-cache policy` в ubuntu:24.04 (АРХ §9, §10).
+cmake
+ninja-build
+g++
+pkg-config
+libdrogon-dev
+libjsoncpp-dev
+uuid-dev
+zlib1g-dev
+libssl-dev
+libbrotli-dev
+# sqlite, mariadb, hiredis, yaml-cpp, boost нужны DrogonConfig.cmake, а не нашему коду (АРХ §10).
+libsqlite3-dev
+libmariadb-dev
+libhiredis-dev
+libyaml-cpp-dev
+libc-ares-dev
+libboost-dev
+libpq-dev
+libpoppler-cpp-dev
+libzxing-dev
+libtesseract-dev
+libxxhash-dev
+libexpat1-dev
+libsimdjson-dev
