@@ -15,6 +15,10 @@ docker cp db "$name:/db"
 docker cp tests/db/schema_test.sql "$name:/schema_test.sql"
 run() { docker exec -e PGHOST=127.0.0.1 -e PGUSER=sertkontrol -e PGDATABASE=sertkontrol "$name" "$@"; }
 run sh /db/migrate.sh
-run sh /db/migrate.sh | tee /dev/stderr | grep -q "уже применена"
+# Второй прогон обязан ничего не применять. Вывод — через переменную: `tee /dev/stderr`
+# переоткрывает файл, в который перенаправлен stderr, и усекает его.
+second="$(run sh /db/migrate.sh)"
+echo "$second"
+grep -q "уже применена" <<<"$second"
 run psql -v ON_ERROR_STOP=1 -q -f /schema_test.sql
 echo "db-migrations: OK"

@@ -41,7 +41,7 @@ COPY docker/apt-runtime-deps.txt /tmp/apt-runtime-deps.txt
 RUN apt-get update \
     && grep -vE '^\s*(#|$)' /tmp/apt-runtime-deps.txt | xargs apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* /tmp/apt-runtime-deps.txt \
-    && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin sertkontrol \
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sertkontrol \
     && mkdir -p /data/snapshots /data/sources \
     && chown sertkontrol:sertkontrol /data/snapshots /data/sources
 COPY --from=build /b/apps/certd/certd /b/apps/ingest/ingest /usr/local/bin/
