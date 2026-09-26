@@ -29,6 +29,12 @@ sk_add_test(snapshot_test
 target_include_directories(snapshot_test PRIVATE ${XXHASH_INCLUDE_DIR})
 target_link_libraries(snapshot_test PRIVATE ${XXHASH_LIBRARY})
 
+sk_add_test(verify_test
+  verify/rules_test.cpp
+  verify/text_test.cpp
+  LIBS sk::verify)
+target_compile_definitions(verify_test PRIVATE SK_RULES_MD="${PROJECT_SOURCE_DIR}/docs/rules.md")
+
 sk_add_test(certd_test
   certd/config_test.cpp
   certd/health_test.cpp

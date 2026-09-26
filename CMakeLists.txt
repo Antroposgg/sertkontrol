@@ -22,6 +22,7 @@ include(cmake/FindDrogonCompat.cmake)
 add_subdirectory(libs/contracts)
 add_subdirectory(libs/canon)
 add_subdirectory(libs/snapshot)
+add_subdirectory(libs/verify)
 add_subdirectory(apps/ingest)
 add_subdirectory(apps/certd)
 

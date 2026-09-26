@@ -1,0 +1,227 @@
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <regex>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "sertkontrol/snapshot/writer.hpp"
+#include "sertkontrol/verify/text.hpp"
+#include "sertkontrol_contracts.hpp"
+#include "support/checked.hpp"
+#include "support/files.hpp"
+
+namespace sk::verify {
+namespace {
+
+using snapshot::RecordInput;
+using snapshot::Status;
+using std::chrono::day;
+using std::chrono::days;
+using std::chrono::month;
+using std::chrono::year;
+
+constexpr Date kToday = year{2026} / month{9} / day{26};
+
+std::vector<RecordInput> records() {
+  return {
+      {.number = "RUD-CR.PA08.B.89369/26",
+       .status = Status::kActive,
+       .issue_date = year{2026} / month{2} / day{10},
+       .expiry_date = year{2031} / month{2} / day{9},
+       .applicant_name = "ООО «ТЕСТ»",
+       .applicant_inn = "7700000016",
+       .manufacturer_name = "ТЕСТ-ЗАВОД",
+       .product = "Чайники",
+       .tnved = "8516790000",
+       .registry_id = 21950326},
+      {.number = "RUD-RU.PA01.B.10001/25", .status = Status::kActive, .expiry_date = kToday + days{10}},
+      {.number = "RUD-RU.PA01.B.10002/25", .status = Status::kActive, .expiry_date = kToday},
+      {.number = "RUD-RU.PA01.B.10003/21",
+       .status = Status::kActive,
+       .issue_date = year{2021} / month{1} / day{1},
+       .expiry_date = year{2024} / month{1} / day{1}},
+      {.number = "RUD-RU.PA01.B.10004/25",
+       .status = Status::kSuspended,
+       .status_date = year{2026} / month{8} / day{1},
+       .suspended_until = year{2026} / month{12} / day{1}},
+      {.number = "RUC-RU.AЯ46.B.10005/24",
+       .status = Status::kTerminated,
+       .status_date = year{2026} / month{6} / day{15}},
+      {.number = "RUD-RU.PA01.B.10006/25", .status = Status::kAnnulled},
+      {.number = "RUD-RU.PA01.B.10007/25", .status = Status::kArchived},
+      {.number = "RUD-RU.PA01.B.10008/25", .status = Status::kUnknown},
+      {.number = "RUD-RU.PA01.B.10009/25", .status = Status::kActive},
+      // Та же серия/год, что у искомых в тестах «нет в данных».
+      {.number = "RUD-RU.PA02.B.20000/25", .status = Status::kActive},
+      {.number = "RUD-RU.PA03.B.20000/25", .status = Status::kActive},
+      {.number = "RUD-RU.XX99.B.20000/25", .status = Status::kActive},
+      {.number = "RUD-RU.PA09.B.20000/25", .status = Status::kActive},
+  };
+}
+
+class RulesTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    snapshot_path = std::filesystem::temp_directory_path() / "sk-verify-rules-test.bin";
+    ASSERT_TRUE(snapshot::write_snapshot(
+        snapshot_path, records(), {.version = 7, .source = "test", .source_date = kToday, .is_demo = true}));
+    auto r = snapshot::open_snapshot(snapshot_path);
+    ASSERT_TRUE(r.has_value());
+    shared_snapshot = std::move(r).value();
+  }
+  static void TearDownTestSuite() {
+    shared_snapshot.reset();
+    std::filesystem::remove(snapshot_path);
+  }
+
+  static Verdict run(const std::string& number) {
+    return check(*shared_snapshot, {.text = number, .today = kToday});
+  }
+
+  static std::vector<std::string> rules(const Verdict& v) {
+    std::vector<std::string> out;
+    out.reserve(v.findings.size());
+    for (const auto& f : v.findings) {
+      out.push_back(f.rule);
+    }
+    return out;
+  }
+
+  static const Finding* find(const Verdict& v, const std::string& rule) {
+    const auto it = std::ranges::find(v.findings, rule, &Finding::rule);
+    return it == v.findings.end() ? nullptr : &*it;
+  }
+
+  static inline std::filesystem::path
+      snapshot_path;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+  static inline snapshot::SnapshotPtr
+      shared_snapshot;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+};
+
+struct Row {
+  std::string number;
+  Level level;
+  std::vector<std::string> rules;
+};
+
+TEST_F(RulesTest, Table) {
+  const std::vector<Row> table = {
+      {"ЕАЭС N RU Д-CR.РА08.В.89369/26",
+       Level::kOk,
+       {"status.active", "term.period", "term.remaining", "advice.watch"}},
+      {"RU D-RU.PA01.B.10001/25",
+       Level::kWarning,
+       {"status.active", "term.period", "term.expiring", "advice.renew", "advice.watch"}},
+      {"RU D-RU.PA01.B.10002/25",
+       Level::kWarning,
+       {"status.active", "term.period", "term.expiring", "advice.renew", "advice.watch"}},
+      {"RU D-RU.PA01.B.10003/21",
+       Level::kProblem,
+       {"status.active", "term.period", "term.expired", "advice.replace"}},
+      {"RU D-RU.PA01.B.10004/25", Level::kProblem, {"status.suspended", "term.unknown", "advice.replace"}},
+      {"RU C-RU.AЯ46.B.10005/24", Level::kProblem, {"status.terminated", "term.unknown", "advice.replace"}},
+      {"RU D-RU.PA01.B.10006/25", Level::kProblem, {"status.annulled", "term.unknown", "advice.replace"}},
+      {"RU D-RU.PA01.B.10007/25", Level::kProblem, {"status.archived", "term.unknown", "advice.replace"}},
+      {"RU D-RU.PA01.B.10008/25",
+       Level::kWarning,
+       {"status.unknown", "term.unknown", "advice.check_status", "advice.watch"}},
+      {"RU D-RU.PA01.B.10009/25", Level::kOk, {"status.active", "term.unknown", "advice.watch"}},
+      {"RU D-RU.PA05.B.20000/25", Level::kNotFound, {"not_found", "advice.check_number"}},
+      {"RU D-RU.PA01.B.99999/25", Level::kNotFound, {"not_found", "advice.check_number"}},
+      {"привет", Level::kNotFound, {"number.unparsed"}},
+  };
+  for (const auto& row : table) {
+    SCOPED_TRACE(row.number);
+    const auto v = run(row.number);
+    EXPECT_EQ(v.level, row.level);
+    EXPECT_EQ(rules(v), row.rules);
+    EXPECT_EQ(v.card.has_value(), row.level != Level::kNotFound);
+    EXPECT_EQ(v.query, row.number);
+    EXPECT_EQ(v.data_date, kToday);
+    EXPECT_EQ(v.snapshot_version, 7U);
+    EXPECT_TRUE(v.is_demo);
+  }
+}
+
+TEST_F(RulesTest, EveryFindingHasBasisMatchingCatalogPrefix) {
+  for (const auto* number :
+       {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10003/21", "RU D-RU.PA05.B.20000/25"}) {
+    for (const auto& f : run(number).findings) {
+      if (f.rule.starts_with("advice.")) {
+        EXPECT_EQ(f.basis, Basis::kRecommendation) << f.rule;
+      } else if (f.rule.starts_with("status.") || f.rule == "term.period" || f.rule == "term.unknown" ||
+                 f.rule == "not_found") {
+        EXPECT_EQ(f.basis, Basis::kFact) << f.rule;
+      } else {
+        EXPECT_EQ(f.basis, Basis::kCalculation) << f.rule;
+      }
+    }
+  }
+}
+
+TEST_F(RulesTest, CardFieldsAndRegistryLink) {
+  const auto v = run("еаэс n ru дcr.ра08.в.89369/26");
+  ASSERT_TRUE(v.card.has_value());
+  const auto& c = *v.card;  // NOLINT(bugprone-unchecked-optional-access): проверено выше.
+  EXPECT_EQ(v.number, "RUD-CR.PA08.B.89369/26");
+  EXPECT_EQ(c.kind, canon::DocKind::kDeclaration);
+  EXPECT_EQ(c.applicant_name, "ООО «ТЕСТ»");
+  EXPECT_EQ(c.applicant_inn, "7700000016");
+  EXPECT_EQ(c.manufacturer_name, "ТЕСТ-ЗАВОД");
+  EXPECT_EQ(c.product, "Чайники");
+  EXPECT_EQ(c.tnved, "8516790000");
+  EXPECT_EQ(c.registry_url, "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  EXPECT_EQ(sk::test::checked(run("RU C-RU.AЯ46.B.10005/24").card).registry_url,
+            "https://pub.fsa.gov.ru/rss/certificate");
+}
+
+TEST_F(RulesTest, TextsMentionDates) {
+  EXPECT_EQ(find(run("RU D-RU.PA01.B.10004/25"), "status.suspended")->text,
+            "Статус в реестре: приостановлен до 01.12.2026 (с 01.08.2026)");
+  EXPECT_EQ(find(run("RU D-RU.PA01.B.10003/21"), "term.expired")->text,
+            "Срок действия истёк 01.01.2024 — 999 дн. назад");
+  EXPECT_EQ(find(run("RU D-RU.PA01.B.10001/25"), "term.expiring")->text,
+            "Срок действия истекает через 10 дн.");
+  EXPECT_EQ(find(run("RU D-RU.PA05.B.20000/25"), "not_found")->text,
+            "Номера нет в данных реестра на 26.09.2026");
+}
+
+TEST_F(RulesTest, NotFoundSuggestsNearestOfSameSerial) {
+  const auto v = run("RU D-RU.PA05.B.20000/25");
+  ASSERT_EQ(v.suggestions.size(), kMaxSuggestions);
+  EXPECT_EQ(v.suggestions[0].number, "RUD-RU.PA02.B.20000/25");
+  EXPECT_EQ(v.suggestions[0].distance, 1.0);
+  EXPECT_EQ(v.suggestions[1].number, "RUD-RU.PA03.B.20000/25");
+  EXPECT_EQ(v.suggestions[2].number, "RUD-RU.PA09.B.20000/25");
+  EXPECT_TRUE(std::ranges::is_sorted(v.suggestions, {}, &Suggestion::distance));
+  EXPECT_TRUE(run("RU D-RU.PA01.B.99999/25").suggestions.empty());
+  EXPECT_TRUE(run("RU D-RU.AB12.B.00001").suggestions.empty());  // нет года — нет серии
+}
+
+TEST_F(RulesTest, EveryRuleIsDocumentedInCatalog) {
+  const auto md = sk::test::read_file(SK_RULES_MD);
+  ASSERT_FALSE(md.empty());
+  std::set<std::string> documented;
+  const std::regex id{R"(\|\s*`([a-z_]+\.?[a-z_]*)`\s*\|)"};
+  for (std::sregex_iterator it{md.begin(), md.end(), id}, end; it != end; ++it) {
+    documented.insert((*it)[1]);
+  }
+  std::set<std::string> used;
+  for (const auto* n : {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10001/25", "RU D-RU.PA01.B.10003/21",
+                        "RU D-RU.PA01.B.10004/25", "RU C-RU.AЯ46.B.10005/24", "RU D-RU.PA01.B.10006/25",
+                        "RU D-RU.PA01.B.10007/25", "RU D-RU.PA01.B.10008/25", "RU D-RU.PA01.B.10009/25",
+                        "RU D-RU.PA05.B.20000/25", "x"}) {
+    for (const auto& f : run(n).findings) {
+      used.insert(f.rule);
+    }
+  }
+  for (const auto& r : used) {
+    EXPECT_TRUE(documented.contains(r)) << "правило «" << r << "» не описано в docs/rules.md";
+  }
+}
+
+}  // namespace
+}  // namespace sk::verify

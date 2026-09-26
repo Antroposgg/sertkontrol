@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <string>
 #include <thread>
@@ -17,6 +16,7 @@
 #include "sertkontrol/snapshot/format.hpp"
 #include "sertkontrol/snapshot/holder.hpp"
 #include "sertkontrol/snapshot/writer.hpp"
+#include "support/files.hpp"
 
 namespace sk::snapshot {
 namespace {
@@ -71,16 +71,9 @@ class SnapshotTest : public ::testing::Test {
     return path;
   }
 
-  static std::string read_all(const std::filesystem::path& p) {
-    std::string bytes(static_cast<std::size_t>(std::filesystem::file_size(p)), '\0');
-    std::ifstream in{p, std::ios::binary};
-    in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    return bytes;
-  }
-
+  static std::string read_all(const std::filesystem::path& p) { return sk::test::read_file(p); }
   static void write_all(const std::filesystem::path& p, const std::string& bytes) {
-    std::ofstream out{p, std::ios::binary | std::ios::trunc};
-    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    sk::test::write_file(p, bytes);
   }
 
   /// Портит файл функцией `mutate` над заголовком и данными и пересчитывает контрольную сумму,
