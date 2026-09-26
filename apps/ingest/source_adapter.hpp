@@ -24,6 +24,7 @@ struct RawRecord {
   std::string issue_date{};
   std::string expiry_date{};
   std::string status_date{};
+  std::string suspended_until{};
   std::string applicant_name{};
   std::string applicant_inn{};
   std::string manufacturer_name{};

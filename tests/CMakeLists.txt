@@ -44,4 +44,8 @@ sk_add_test(certd_test
 sk_add_test(ingest_test
   ingest/cli_test.cpp
   ingest/fake_source_test.cpp
+  ingest/demo_build_test.cpp
   LIBS sk::ingest_core)
+target_compile_definitions(ingest_test PRIVATE
+  SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+  SK_DEMO_DIR="${PROJECT_SOURCE_DIR}/data/demo")
