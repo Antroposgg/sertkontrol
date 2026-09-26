@@ -1,0 +1,29 @@
+find_package(GTest CONFIG REQUIRED)
+include(GoogleTest)
+
+# sk_add_test(<имя> <исходники...> LIBS <цели...>)
+function(sk_add_test name)
+  cmake_parse_arguments(ARG "" "" "LIBS" ${ARGN})
+  add_executable(${name} ${ARG_UNPARSED_ARGUMENTS})
+  target_link_libraries(${name} PRIVATE ${ARG_LIBS} GTest::gtest_main GTest::gmock)
+  target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  sk_set_warnings(${name})
+  gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30)
+endfunction()
+
+sk_add_test(contracts_test
+  contracts/result_test.cpp
+  contracts/enums_test.cpp
+  contracts/fakes_test.cpp
+  LIBS sk::fakes)
+
+sk_add_test(certd_test
+  certd/config_test.cpp
+  certd/health_test.cpp
+  certd/fake_domain_test.cpp
+  LIBS sk::certd_core)
+
+sk_add_test(ingest_test
+  ingest/cli_test.cpp
+  ingest/fake_source_test.cpp
+  LIBS sk::ingest_core)
