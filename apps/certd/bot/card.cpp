@@ -137,7 +137,8 @@ OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& cv, const 
   OutgoingMessage m{
       .max_user_id = user, .text = std::move(text), .kind = MessageKind::kVerdict, .is_demo = v.is_demo};
   if (!v.number.empty() && cv.check_id > 0) {
-    m.buttons.push_back({{.text = "На контроль", .payload = "w:" + std::to_string(cv.check_id)}});
+    m.buttons.push_back({{.text = "На контроль", .payload = "w:" + std::to_string(cv.check_id)},
+                         {.text = "Указать поставщика", .payload = "s:" + std::to_string(cv.check_id)}});
   }
   std::vector<Button> row;
   if (v.card && v.card->registry_url.starts_with("https://")) {
@@ -246,12 +247,111 @@ OutgoingMessage progress(std::int64_t user) {
   return {.max_user_id = user, .text = "⏳ Проверяю документ…", .kind = MessageKind::kService};
 }
 
+OutgoingMessage ask_supplier_inn(std::int64_t user) {
+  return {.max_user_id = user,
+          .text =
+              "Пришлите ИНН поставщика — 10 или 12 цифр. Запишу его к документу и поставлю документ на "
+              "контроль.\n"
+              "Передумали — пришлите «отмена» или номер другого документа.",
+          .kind = MessageKind::kService};
+}
+
+OutgoingMessage supplier_attached(std::int64_t user, const AddResult& added, const CardOptions& options) {
+  OutgoingMessage m{.max_user_id = user,
+                    .text = "🔔 <b>" + html_escape(verify::display_number(added.item.doc_key)) +
+                            "</b> на контроле, поставщик — ИНН " +
+                            html_escape(added.item.supplier_inn.value_or("")) +
+                            ". Сообщу, если статус в реестре изменится.",
+                    .kind = MessageKind::kReply,
+                    .is_demo = added.verdict.is_demo};
+  std::vector<Button> row{{.text = "Снять с контроля", .payload = "d:" + std::to_string(added.item.id)}};
+  if (options.open_app) {
+    row.push_back(open_app("Открыть портфель", "portfolio"));
+  }
+  m.buttons.push_back(std::move(row));
+  return m;
+}
+
+OutgoingMessage bad_inn(std::int64_t user) {
+  return {.max_user_id = user,
+          .text = html_escape(
+              "ИНН не прошёл проверку контрольных цифр. Пришлите 10 цифр ИНН организации или 12 — "
+              "ИП, либо «отмена»."),
+          .kind = MessageKind::kReply};
+}
+
+OutgoingMessage dialog_cancelled(std::int64_t user) {
+  return {.max_user_id = user, .text = "Хорошо, поставщика не указываю.", .kind = MessageKind::kReply};
+}
+
+namespace {
+
+/// Строка уведомления об одном документе: вид и номер, новый статус, что было, SKU.
+std::string change_line(const ChangeNotice::Item& item) {
+  const auto kind =
+      verify::kind_name(item.doc_key.size() > 2 && item.doc_key[2] == 'C' ? canon::DocKind::kCertificate
+                                                                          : canon::DocKind::kDeclaration);
+  std::string line = "• " + std::string{kind} + " <b>" + html_escape(verify::display_number(item.doc_key)) +
+                     "</b>: <b>" + std::string{verify::status_name(item.after)} + "</b>";
+  if (item.after == snapshot::Status::kSuspended && item.suspended_until) {
+    line += " до " + verify::format_date(*item.suspended_until);
+  }
+  if (item.status_date) {
+    line += " с " + verify::format_date(*item.status_date);
+  }
+  line += item.before == snapshot::Status::kUnknown
+              ? " (раньше в данных не было)"
+              : " (было: " + std::string{verify::status_name(item.before)} + ")";
+  if (item.sku) {
+    line += ", SKU " + html_escape(*item.sku);
+  }
+  return line + "\n";
+}
+
+}  // namespace
+
+std::vector<OutgoingMessage> render_change_notice(const ChangeNotice& notice, const CardOptions& options) {
+  const std::string header = "🔔 <b>Изменился статус документов на контроле</b>\n\n";
+  std::string footer = "\nДанные реестра на " + verify::format_date(notice.data_date);
+  if (notice.is_demo) {
+    footer += "\n" + std::string{kDemoNote};
+  }
+  std::vector<OutgoingMessage> out;
+  std::string body;
+  const auto flush = [&] {
+    if (body.empty()) {
+      return;
+    }
+    OutgoingMessage m{.max_user_id = notice.max_user_id,
+                      .text = header + body + footer,
+                      .kind = MessageKind::kStatusChanged,
+                      .is_demo = notice.is_demo};
+    if (options.open_app) {
+      m.buttons.push_back({open_app("Открыть портфель", "portfolio")});
+    }
+    out.push_back(std::move(m));
+    body.clear();
+  };
+  const auto frame = maxapi::utf8_length(header) + maxapi::utf8_length(footer);
+  for (const auto& item : notice.items) {
+    auto line = change_line(item);
+    // Лимит MAX — 4000 символов (кодовых точек, а не байтов UTF-8); строка документа не делится.
+    if (!body.empty() &&
+        frame + maxapi::utf8_length(body) + maxapi::utf8_length(line) > maxapi::kMaxTextLength) {
+      flush();
+    }
+    body += line;
+  }
+  flush();
+  return out;
+}
+
 std::optional<Callback> parse_callback(std::string_view payload) {
   if (payload.size() < 3 || payload[1] != ':') {
     return std::nullopt;
   }
   const char action = payload[0];
-  if (action != 'w' && action != 'W' && action != 'd' && action != 'c' && action != 'h') {
+  if (action != 'w' && action != 'W' && action != 'd' && action != 's' && action != 'c' && action != 'h') {
     return std::nullopt;
   }
   std::int64_t arg = 0;

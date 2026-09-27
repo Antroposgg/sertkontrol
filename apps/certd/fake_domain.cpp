@@ -11,10 +11,14 @@ FakeDomainService::FakeDomainService(snapshot::SnapshotPtr base, snapshot::Snaps
     : base_(std::move(base)), updated_(std::move(updated)), today_(today) {
 }
 
-snapshot::SnapshotPtr FakeDomainService::snapshot_for(std::int64_t max_user_id) const {
-  const std::scoped_lock lock(mutex_);
+snapshot::SnapshotPtr FakeDomainService::snapshot_locked(std::int64_t max_user_id) const {
   const auto it = stages_.find(max_user_id);
   return (it != stages_.end() && it->second == DemoStage::kUpdated) ? updated_ : base_;
+}
+
+snapshot::SnapshotPtr FakeDomainService::snapshot_for(std::int64_t max_user_id) const {
+  const std::scoped_lock lock(mutex_);
+  return snapshot_locked(max_user_id);
 }
 
 CheckResult FakeDomainService::check_all(std::int64_t max_user_id, const std::vector<std::string>& raws) {
@@ -93,7 +97,7 @@ drogon::Task<Result<Page<PortfolioItem>>> FakeDomainService::list_portfolio(User
 }
 
 Result<AddResult> FakeDomainService::add_locked(std::int64_t owner, AddRequest request) {
-  const auto snap = (stages_.contains(owner) && stages_.at(owner) == DemoStage::kUpdated) ? updated_ : base_;
+  const auto snap = snapshot_locked(owner);
   auto verdict = fake::check(*snap, verify::Query{.text = request.number, .today = today_});
   if (verdict.number.empty()) {
     return Error{ErrorCode::kNumberNotRecognized, "Не удалось распознать номер"};
@@ -156,6 +160,29 @@ drogon::Task<Result<BatchAddResult>> FakeDomainService::add_batch(UserContext us
   co_return out;
 }
 
+drogon::Task<Result<AddResult>> FakeDomainService::attach_supplier(UserContext user, std::int64_t check_id,
+                                                                   std::string supplier_inn) {
+  const std::scoped_lock lock(mutex_);
+  const auto it = checks_.find(check_id);
+  if (it == checks_.end() || it->second.owner != user.max_user_id || it->second.number.empty()) {
+    co_return Error{ErrorCode::kNotFound, "Проверка не найдена"};
+  }
+  if (supplier_inn.size() != 10 && supplier_inn.size() != 12) {
+    co_return Error{ErrorCode::kInvalidArgument, "ИНН поставщика: неверный формат или контрольная цифра"};
+  }
+  // Уже на контроле без SKU — записываем поставщика в ту же запись.
+  for (auto& [id, stored] : items_) {
+    if (stored.owner == user.max_user_id && stored.item.doc_key == it->second.number && !stored.item.sku) {
+      stored.item.supplier_inn = supplier_inn;
+      auto verdict = fake::check(*snapshot_locked(user.max_user_id),
+                                 verify::Query{.text = stored.item.doc_key, .today = today_});
+      co_return AddResult{.item = stored.item, .verdict = std::move(verdict)};
+    }
+  }
+  co_return add_locked(user.max_user_id,
+                       AddRequest{.number = it->second.number, .supplier_inn = std::move(supplier_inn)});
+}
+
 drogon::Task<Result<Ok>> FakeDomainService::remove_from_portfolio(UserContext user, std::int64_t item_id) {
   const std::scoped_lock lock(mutex_);
   const auto it = items_.find(item_id);
@@ -168,24 +195,96 @@ drogon::Task<Result<Ok>> FakeDomainService::remove_from_portfolio(UserContext us
 }
 
 drogon::Task<Result<DataStatus>> FakeDomainService::data_status(UserContext user) {
-  const auto snap = snapshot_for(user.max_user_id);
+  const std::scoped_lock lock(mutex_);
+  const auto snap = snapshot_locked(user.max_user_id);
   const auto& meta = snap->meta();
+  const auto it = stages_.find(user.max_user_id);
   co_return DataStatus{.version = meta.version,
                        .source = meta.source,
                        .source_date = meta.source_date,
                        .record_count = snap->size(),
-                       .is_demo = meta.is_demo};
+                       .is_demo = meta.is_demo,
+                       .demo_stage = it == stages_.end() ? DemoStage::kBase : it->second,
+                       .demo_update_available = true};
 }
 
-drogon::Task<Result<Ok>> FakeDomainService::simulate_update(UserContext user) {
+namespace fake_detail {
+
+std::optional<snapshot::RecordView> find_record(const snapshot::Snapshot& s, const std::string& key) {
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    if (s.record(i).number == key) {
+      return s.record(i);
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<DocStateView> state_view(const std::optional<snapshot::RecordView>& r) {
+  if (!r) {
+    return std::nullopt;
+  }
+  return DocStateView{.status = r->status, .expiry_date = r->expiry_date, .status_date = r->status_date};
+}
+
+/// История = разница статуса документа между N и N+1 (в проде — `registry_change`).
+DocumentHistory history_between(const snapshot::Snapshot& base, const snapshot::Snapshot& updated,
+                                std::string key) {
+  DocumentHistory out{.doc_key = std::move(key)};
+  const auto before = find_record(base, out.doc_key);
+  const auto after = find_record(updated, out.doc_key);
+  if ((before.has_value() != after.has_value()) || (before && after && before->status != after->status)) {
+    out.entries.push_back(HistoryEntry{.version = updated.meta().version,
+                                       .data_date = updated.meta().source_date,
+                                       .before = state_view(before),
+                                       .after = state_view(after)});
+  }
+  return out;
+}
+
+}  // namespace fake_detail
+
+drogon::Task<Result<DocumentHistory>> FakeDomainService::history(UserContext user, std::string number) {
+  auto key = fake::canonicalize(number);
+  if (!key) {
+    co_return Error{ErrorCode::kNumberNotRecognized, "Не удалось распознать номер"};
+  }
+  const std::scoped_lock lock(mutex_);
+  const auto it = stages_.find(user.max_user_id);
+  if (it == stages_.end() || it->second != DemoStage::kUpdated) {
+    co_return DocumentHistory{.doc_key = std::move(*key)};  // на стадии N обновления ещё не было
+  }
+  co_return fake_detail::history_between(*base_, *updated_, std::move(*key));
+}
+
+drogon::Task<Result<DemoUpdate>> FakeDomainService::simulate_update(UserContext user) {
   const std::scoped_lock lock(mutex_);
   stages_[user.max_user_id] = DemoStage::kUpdated;
-  co_return Ok{};
+  DemoUpdate out;
+  for (auto& [id, stored] : items_) {
+    if (stored.owner != user.max_user_id || stored.item.last_version >= updated_->meta().version) {
+      continue;
+    }
+    const auto v = fake::check(*updated_, verify::Query{.text = stored.item.doc_key, .today = today_});
+    if (v.card && v.card->status != stored.item.last_status) {
+      stored.item.last_status = v.card->status;
+      ++out.notified;
+    }
+    stored.item.last_version = updated_->meta().version;
+  }
+  co_return out;
 }
 
 drogon::Task<Result<Ok>> FakeDomainService::reset_demo(UserContext user) {
   const std::scoped_lock lock(mutex_);
   stages_[user.max_user_id] = DemoStage::kBase;
+  for (auto& [id, stored] : items_) {
+    if (stored.owner != user.max_user_id) {
+      continue;
+    }
+    const auto v = fake::check(*base_, verify::Query{.text = stored.item.doc_key, .today = today_});
+    stored.item.last_status = v.card ? v.card->status : snapshot::Status::kUnknown;
+    stored.item.last_version = base_->meta().version;
+  }
   co_return Ok{};
 }
 

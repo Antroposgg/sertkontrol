@@ -224,7 +224,48 @@ Json::Value to_json(const DataStatus& s) {
   j["source_date"] = iso_date(s.source_date);
   j["record_count"] = static_cast<Json::UInt64>(s.record_count);
   j["is_demo"] = s.is_demo;
-  j["next_update"] = Json::Value{};  // ежедневное обновление — этап 2
+  j["demo_stage"] = s.demo_stage == DemoStage::kUpdated ? "updated" : "base";
+  j["demo_update_available"] = s.demo_update_available;
+  // Ежедневное обновление запускается, но источник ФСА не подтверждён — момента следующих данных нет.
+  j["next_update"] = Json::Value{};
+  return j;
+}
+
+namespace {
+
+Json::Value state_json(const std::optional<DocStateView>& s) {
+  if (!s) {
+    return Json::Value{};
+  }
+  Json::Value j{Json::objectValue};
+  j["status"] = std::string{snapshot::to_string(s->status)};
+  j["status_name"] = std::string{verify::status_name(s->status)};
+  j["expiry_date"] = date_or_null(s->expiry_date);
+  j["status_date"] = date_or_null(s->status_date);
+  return j;
+}
+
+}  // namespace
+
+Json::Value to_json(const DocumentHistory& h) {
+  Json::Value j{Json::objectValue};
+  j["doc_key"] = h.doc_key;
+  j["display_number"] = verify::display_number(h.doc_key);
+  j["entries"] = Json::Value{Json::arrayValue};
+  for (const auto& e : h.entries) {
+    Json::Value je{Json::objectValue};
+    je["version"] = static_cast<Json::UInt64>(e.version);
+    je["data_date"] = iso_date(e.data_date);
+    je["before"] = state_json(e.before);
+    je["after"] = state_json(e.after);
+    j["entries"].append(je);
+  }
+  return j;
+}
+
+Json::Value to_json(const DemoUpdate& u) {
+  Json::Value j{Json::objectValue};
+  j["notified"] = static_cast<Json::UInt64>(u.notified);
   return j;
 }
 

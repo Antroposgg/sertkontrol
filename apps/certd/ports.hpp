@@ -1,11 +1,15 @@
 /// @file ports.hpp
-/// @brief Порты бота к хранилищу: очередь исходящих (outbox, C9) и журнал входящих событий (дедупликация).
+/// @brief Порты бота к хранилищу: очередь исходящих (outbox, C9), журнал входящих событий (дедупликация) и
+/// состояние диалогов.
 ///
 /// Реализации: PostgreSQL (`pg_ports.*`) и память (`memory_ports.hpp`, для тестов бота и webhook).
 #pragma once
 
 #include <drogon/utils/coroutine.h>
 
+#include <chrono>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "sertkontrol/maxapi/message.hpp"
@@ -46,6 +50,30 @@ class InboundLog {
   virtual drogon::Task<Result<bool>> first_seen(std::string dedup_key) = 0;
   /// Отмечает обработку; пустая `error` — успех.
   virtual drogon::Task<void> mark_processed(std::string dedup_key, std::string error) = 0;
+};
+
+/// Незавершённый диалог бота (`dialog_state`, R4): что бот ждёт от пользователя следующим сообщением.
+struct Dialog {
+  std::string state{};  ///< Например, `awaiting_inn`.
+  std::int64_t arg{0};  ///< Аргумент состояния: для `awaiting_inn` — id строки `check_log`.
+};
+
+/// Хранилище диалогов. Состояние старше `kDialogTtl` считается сброшенным (АРХ §8, R4.5).
+class DialogStore {
+ public:
+  static constexpr std::chrono::minutes kDialogTtl{30};
+
+  DialogStore() = default;
+  DialogStore(const DialogStore&) = delete;
+  DialogStore& operator=(const DialogStore&) = delete;
+  DialogStore(DialogStore&&) = delete;
+  DialogStore& operator=(DialogStore&&) = delete;
+  virtual ~DialogStore() = default;
+
+  /// Текущий диалог пользователя MAX или `nullopt` (нет или устарел).
+  virtual drogon::Task<Result<std::optional<Dialog>>> get(std::int64_t max_user_id) = 0;
+  virtual drogon::Task<Result<Ok>> set(std::int64_t max_user_id, Dialog dialog) = 0;
+  virtual drogon::Task<Result<Ok>> clear(std::int64_t max_user_id) = 0;
 };
 
 }  // namespace sk::certd

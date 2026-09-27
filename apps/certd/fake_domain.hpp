@@ -30,9 +30,12 @@ class FakeDomainService final : public DomainService {
   drogon::Task<Result<AddResult>> add_to_portfolio(UserContext user, AddRequest request) override;
   drogon::Task<Result<AddResult>> add_checked(UserContext user, std::int64_t check_id) override;
   drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) override;
+  drogon::Task<Result<AddResult>> attach_supplier(UserContext user, std::int64_t check_id,
+                                                  std::string supplier_inn) override;
   drogon::Task<Result<Ok>> remove_from_portfolio(UserContext user, std::int64_t item_id) override;
   drogon::Task<Result<DataStatus>> data_status(UserContext user) override;
-  drogon::Task<Result<Ok>> simulate_update(UserContext user) override;
+  drogon::Task<Result<DocumentHistory>> history(UserContext user, std::string number) override;
+  drogon::Task<Result<DemoUpdate>> simulate_update(UserContext user) override;
   drogon::Task<Result<Ok>> reset_demo(UserContext user) override;
 
   /// Сколько номеров максимум проверяется из одного текста (F1).
@@ -52,6 +55,7 @@ class FakeDomainService final : public DomainService {
   [[nodiscard]] snapshot::SnapshotPtr snapshot_for(std::int64_t max_user_id) const;
   [[nodiscard]] CheckResult check_all(std::int64_t max_user_id, const std::vector<std::string>& raws);
   [[nodiscard]] Result<AddResult> add_locked(std::int64_t owner, AddRequest request);
+  [[nodiscard]] snapshot::SnapshotPtr snapshot_locked(std::int64_t max_user_id) const;
 
   snapshot::SnapshotPtr base_;
   snapshot::SnapshotPtr updated_;

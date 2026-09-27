@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Сертконтроль — REST API мини-приложения
-  version: 1.0.0
+  version: 1.1.0
   summary: Контракт C7 (АРХ §5, §8). Реализация — apps/certd/rest_api.cpp.
   description: |
     API для мини-приложения MAX. Мини-приложение и API на одном origin: CORS не нужен, cookie нет.
@@ -26,6 +26,7 @@ tags:
   - name: Проверка
   - name: Портфель
   - name: Данные
+  - name: Демо
   - name: Служебное
 
 paths:
@@ -179,6 +180,61 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/SnapshotUnavailable' }
 
+  /api/v1/history:
+    get:
+      tags: [Проверка]
+      summary: История изменений документа в данных, которые видит пользователь
+      description: |
+        Строки `registry_change` (C8) от новых к старым. Демо-пользователь на стадии N видит пустую историю,
+        на стадии N+1 — изменения N → N+1. Номер — в query, а не в пути: канонический номер содержит `/`
+        (ADR-0014).
+      operationId: getHistory
+      parameters:
+        - name: number
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: История (возможно, пустая)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentHistory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/NumberNotRecognized' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /api/v1/demo/simulate-update:
+    post:
+      tags: [Демо]
+      summary: «Симулировать обновление» — перейти на демо-снапшот N+1 и получить уведомления (F6)
+      description: |
+        Только для демо-пользователей. Портфель сверяется с N+1 тем же алгоритмом, что и боевое обновление (F5):
+        по строке `notification` на изменившийся документ и одно сообщение в чат. Повтор идемпотентен
+        (`notified = 0`).
+      operationId: simulateUpdate
+      responses:
+        '200':
+          description: Сколько документов портфеля изменилось
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoUpdate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
+  /api/v1/demo/reset:
+    post:
+      tags: [Демо]
+      summary: «Сбросить демо» — вернуться к снапшоту N, сценарий можно пройти заново (F6)
+      operationId: resetDemo
+      responses:
+        '204': { description: Сброшено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/SnapshotUnavailable' }
+
   /healthz:
     get:
       tags: [Служебное]
@@ -250,6 +306,11 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Unauthorized:
       description: Нет или неверная initData (`unauthorized`) либо старше 24 ч (`init_data_expired`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Действие недоступно этому пользователю (`forbidden`), например демо-сценарий вне демо-режима
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -421,14 +482,59 @@ components:
 
     DataStatus:
       type: object
-      required: [version, source, source_date, record_count, is_demo, next_update]
+      required: [version, source, source_date, record_count, is_demo, demo_stage, demo_update_available, next_update]
       properties:
-        version: { type: integer, format: int64 }
+        version: { type: integer, format: int64, description: 'Версия, которую видит пользователь' }
         source: { type: string }
         source_date: { type: string, format: date }
         record_count: { type: integer }
         is_demo: { type: boolean }
-        next_update: { type: [string, 'null'], format: date-time, description: 'Ежедневное обновление — этап 2' }
+        demo_stage: { type: string, enum: [base, updated] }
+        demo_update_available: { type: boolean, description: 'Демо-снапшот N+1 загружен — «Симулировать обновление» доступно' }
+        next_update:
+          type: [string, 'null']
+          format: date-time
+          description: 'Когда появятся следующие данные; null — источник ФСА не подтверждён'
+
+    DocState:
+      type: object
+      required: [status, status_name, expiry_date, status_date]
+      properties:
+        status: { $ref: '#/components/schemas/Status' }
+        status_name: { type: string }
+        expiry_date: { type: [string, 'null'], format: date }
+        status_date: { type: [string, 'null'], format: date }
+
+    DocumentHistory:
+      type: object
+      required: [doc_key, display_number, entries]
+      properties:
+        doc_key: { type: string }
+        display_number: { type: string }
+        entries:
+          type: array
+          items:
+            type: object
+            required: [version, data_date, before, after]
+            properties:
+              version: { type: integer, format: int64 }
+              data_date: { type: string, format: date }
+              before:
+                description: 'null — документ появился в данных'
+                oneOf:
+                  - $ref: '#/components/schemas/DocState'
+                  - type: 'null'
+              after:
+                description: 'null — документ исчез из данных'
+                oneOf:
+                  - $ref: '#/components/schemas/DocState'
+                  - type: 'null'
+
+    DemoUpdate:
+      type: object
+      required: [notified]
+      properties:
+        notified: { type: integer, description: 'Сколько документов портфеля изменилось (уведомлений)' }
 
     Health:
       type: object

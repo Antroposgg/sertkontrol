@@ -36,6 +36,9 @@ class RestApi {
   drogon::Task<drogon::HttpResponsePtr> add_to_portfolio(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> remove_from_portfolio(drogon::HttpRequestPtr req, std::string id);
   drogon::Task<drogon::HttpResponsePtr> data_status(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> history(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> simulate_update(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> reset_demo(drogon::HttpRequestPtr req);
 
   /// Регистрирует маршруты `/api/v1/*`. `api` должен жить до остановки приложения.
   static void register_routes(drogon::HttpAppFramework& app, const std::shared_ptr<RestApi>& api);

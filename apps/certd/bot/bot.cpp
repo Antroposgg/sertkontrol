@@ -1,5 +1,7 @@
 #include "bot.hpp"
 
+#include <algorithm>
+#include <string_view>
 #include <variant>
 
 #include "../media.hpp"
@@ -10,6 +12,21 @@ namespace {
 
 UserContext ctx(std::int64_t user) {
   return UserContext{.max_user_id = user, .channel = Channel::kBot};
+}
+
+constexpr std::string_view kAwaitingInn = "awaiting_inn";
+
+/// Текст без пробелов по краям.
+std::string_view trimmed(std::string_view s) {
+  const auto b = s.find_first_not_of(" \t\r\n");
+  if (b == std::string_view::npos) {
+    return {};
+  }
+  return s.substr(b, s.find_last_not_of(" \t\r\n") - b + 1);
+}
+
+bool all_digits(std::string_view s) {
+  return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
 }
 
 bool looks_like_pdf(const maxapi::Attachment& a) {
@@ -72,6 +89,20 @@ drogon::Task<std::string> Bot::on_message(maxapi::MessageCreated e) {
     co_return co_await send(welcome(user), kPriorityReply);
   }
 
+  // Незавершённый диалог: ответ на «Указать поставщика». Вложение или посторонний текст сбрасывают его.
+  const auto stored = co_await dialogs_.get(user);
+  const std::optional<Dialog> dialog = stored ? stored.value() : std::nullopt;
+  if (dialog.has_value()) {
+    if (e.attachments.empty()) {
+      auto handled = co_await on_supplier_inn(user, *dialog, e.text);
+      if (handled.has_value()) {
+        co_return std::move(*handled);
+      }
+    } else {
+      (void)co_await dialogs_.clear(user);
+    }
+  }
+
   for (const auto& a : e.attachments) {
     if (a.type == "image") {
       co_return co_await send(error_message(user, Error{ErrorCode::kUnsupportedMediaType, ""}),
@@ -105,6 +136,33 @@ drogon::Task<std::string> Bot::on_message(maxapi::MessageCreated e) {
     co_return co_await send(help(user, config_.card), kPriorityReply);
   }
   co_return co_await send_result(user, co_await domain_.check_text(ctx(user), std::move(e.text)));
+}
+
+drogon::Task<std::optional<std::string>> Bot::on_supplier_inn(std::int64_t user, Dialog dialog,
+                                                              std::string text) {
+  if (dialog.state != kAwaitingInn) {
+    (void)co_await dialogs_.clear(user);
+    co_return std::nullopt;
+  }
+  const auto t = trimmed(text);
+  if (t == "отмена" || t == "Отмена" || t == "/cancel") {
+    (void)co_await dialogs_.clear(user);
+    co_return co_await send(dialog_cancelled(user), kPriorityReply);
+  }
+  if (!all_digits(t)) {
+    // Не ИНН — например, номер другого документа: диалог сбрасывается, сообщение идёт в обычную проверку.
+    (void)co_await dialogs_.clear(user);
+    co_return std::nullopt;
+  }
+  const auto r = co_await domain_.attach_supplier(ctx(user), dialog.arg, std::string{t});
+  if (!r && r.error().code == ErrorCode::kInvalidArgument) {
+    co_return co_await send(bad_inn(user), kPriorityReply);  // диалог продолжается
+  }
+  (void)co_await dialogs_.clear(user);
+  if (!r) {
+    co_return co_await send(error_message(user, r.error()), kPriorityReply);
+  }
+  co_return co_await send(supplier_attached(user, r.value(), config_.card), kPriorityReply);
 }
 
 drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
@@ -155,6 +213,15 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
     }
     (void)co_await api_.answer_callback(e.callback_id, std::move(note));
     co_return std::string{};
+  }
+  if (cb->action == 's') {
+    const auto r = co_await dialogs_.set(user, Dialog{.state = std::string{kAwaitingInn}, .arg = cb->arg});
+    if (!r) {
+      (void)co_await api_.answer_callback(e.callback_id, "Не получилось, попробуйте ещё раз");
+      co_return r.error().detail;
+    }
+    (void)co_await api_.answer_callback(e.callback_id, "");
+    co_return co_await send(ask_supplier_inn(user), kPriorityReply);
   }
   // 'd' — снять с контроля
   const auto r = co_await domain_.remove_from_portfolio(ctx(user), cb->arg);

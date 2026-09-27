@@ -14,6 +14,10 @@ function fakeClient(): ApiClient & { calls: unknown[][] } {
     get: vi.fn(record),
     post: vi.fn(record),
     postForm: vi.fn(record),
+    postEmpty: vi.fn((...args: unknown[]) => {
+      calls.push(args);
+      return Promise.resolve();
+    }),
     del: vi.fn((...args: unknown[]) => {
       calls.push(args);
       return Promise.resolve();
@@ -34,6 +38,9 @@ describe('createSertkontrolApi', () => {
     await api.removeFromPortfolio(7);
     await api.dataStatus();
     await api.checkFile(new File(['%PDF'], 'a.pdf'));
+    await api.history('ЕАЭС N RU Д-1/26');
+    await api.simulateUpdate();
+    await api.resetDemo();
     expect(c.calls.map((x) => x[0])).toEqual([
       '/me',
       '/check?number=RU+%D0%94-1%2F26',
@@ -44,6 +51,9 @@ describe('createSertkontrolApi', () => {
       '/portfolio/7',
       '/data-status',
       '/check/file',
+      '/history?number=%D0%95%D0%90%D0%AD%D0%A1+N+RU+%D0%94-1%2F26',
+      '/demo/simulate-update',
+      '/demo/reset',
     ]);
     const form = c.calls[8]?.[1];
     expect(form).toBeInstanceOf(FormData);

@@ -195,6 +195,42 @@ drogon::Task<drogon::HttpResponsePtr> RestApi::data_status(drogon::HttpRequestPt
   co_return r ? json_response(to_json(r.value())) : problem_response(r.error());
 }
 
+drogon::Task<drogon::HttpResponsePtr> RestApi::history(drogon::HttpRequestPtr req) {
+  const auto user = authenticate(req);
+  if (!user) {
+    co_return problem_response(user.error());
+  }
+  const auto number = req->getParameter("number");
+  if (number.empty()) {
+    co_return problem_response(bad_request("параметр number обязателен"));
+  }
+  const auto r = co_await domain_.history(user.value(), number);
+  co_return r ? json_response(to_json(r.value())) : problem_response(r.error());
+}
+
+drogon::Task<drogon::HttpResponsePtr> RestApi::simulate_update(drogon::HttpRequestPtr req) {
+  const auto user = authenticate(req);
+  if (!user) {
+    co_return problem_response(user.error());
+  }
+  const auto r = co_await domain_.simulate_update(user.value());
+  co_return r ? json_response(to_json(r.value())) : problem_response(r.error());
+}
+
+drogon::Task<drogon::HttpResponsePtr> RestApi::reset_demo(drogon::HttpRequestPtr req) {
+  const auto user = authenticate(req);
+  if (!user) {
+    co_return problem_response(user.error());
+  }
+  const auto r = co_await domain_.reset_demo(user.value());
+  if (!r) {
+    co_return problem_response(r.error());
+  }
+  auto resp = drogon::HttpResponse::newHttpResponse();
+  resp->setStatusCode(drogon::k204NoContent);
+  co_return resp;
+}
+
 void RestApi::register_routes(drogon::HttpAppFramework& app, const std::shared_ptr<RestApi>& api) {
   using drogon::Delete;
   using drogon::Get;
@@ -217,6 +253,12 @@ void RestApi::register_routes(drogon::HttpAppFramework& app, const std::shared_p
                       {Delete});
   app.registerHandler("/api/v1/data-status",
                       [api](HttpRequestPtr req) { return api->data_status(std::move(req)); }, {Get});
+  app.registerHandler("/api/v1/history", [api](HttpRequestPtr req) { return api->history(std::move(req)); },
+                      {Get});
+  app.registerHandler("/api/v1/demo/simulate-update",
+                      [api](HttpRequestPtr req) { return api->simulate_update(std::move(req)); }, {Post});
+  app.registerHandler("/api/v1/demo/reset",
+                      [api](HttpRequestPtr req) { return api->reset_demo(std::move(req)); }, {Post});
 }
 
 }  // namespace sk::certd

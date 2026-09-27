@@ -82,17 +82,53 @@ export interface Me {
   max_user_id: number;
   portfolio_count: number;
   is_demo: boolean;
-  demo_stage: 'base' | 'updated';
+  demo_stage: DemoStage;
   consented: boolean;
 }
 
+/** Стадия демо-сценария: `base` — снапшот N, `updated` — N+1 после «Симулировать обновление» (F6). */
+export type DemoStage = 'base' | 'updated';
+
 export interface DataStatus {
+  /** Версия, которую видит пользователь (для демо — N или N+1 по стадии). */
   version: number;
   source: string;
   source_date: string;
   record_count: number;
   is_demo: boolean;
+  demo_stage: DemoStage;
+  /** Демо-снапшот N+1 загружен — «Симулировать обновление» доступно. */
+  demo_update_available: boolean;
   next_update: string | null;
+}
+
+/** Состояние документа в одной версии данных. */
+export interface DocState {
+  status: Status;
+  status_name: string;
+  expiry_date: string | null;
+  status_date: string | null;
+}
+
+/** Изменение документа между версиями данных; `before = null` — появился, `after = null` — исчез. */
+export interface HistoryEntry {
+  version: number;
+  data_date: string;
+  before: DocState | null;
+  after: DocState | null;
+}
+
+/** История документа: изменения из видимых пользователю версий, новые сверху (ADR-0014). */
+export interface DocumentHistory {
+  doc_key: string;
+  display_number: string;
+  entries: HistoryEntry[];
+}
+
+/** Итог «Симулировать обновление». */
+export interface DemoUpdate {
+  /** Сколько документов портфеля изменилось — столько строк в уведомлении бота. */
+  notified: number;
 }
 
 /** Фильтр портфеля. */

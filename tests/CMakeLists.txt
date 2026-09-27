@@ -77,6 +77,14 @@ sk_add_test(certd_pg_test
   LIBS sk::certd_core)
 target_compile_definitions(certd_pg_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
+# Сценарий жюри целиком: демо-пара собирается из data/demo тем же кодом, что и в ingest.
+sk_add_test(certd_jury_test
+  certd/jury_scenario_test.cpp
+  LIBS sk::certd_core sk::ingest_core)
+target_compile_definitions(certd_jury_test PRIVATE
+  SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+  SK_DEMO_DIR="${PROJECT_SOURCE_DIR}/data/demo")
+
 sk_add_test(ingest_test
   ingest/cli_test.cpp
   ingest/fake_source_test.cpp
