@@ -4,6 +4,7 @@
 #include <drogon/orm/DbListener.h>
 
 #include <atomic>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -337,6 +338,11 @@ int run() {
 }  // namespace
 
 int main() {
+  // Журнал trantor пишет в stdout; вне терминала (docker compose logs) stdout буферизован блоками по 4 КиБ, и
+  // строки появлялись бы только при остановке. Построчная буферизация — каждая запись видна сразу.
+  if (std::setvbuf(stdout, nullptr, _IOLBF, 0) != 0) {
+    std::cerr << "certd: не удалось включить построчный вывод журнала\n";
+  }
   try {
     return run();
   } catch (const std::exception& e) {
