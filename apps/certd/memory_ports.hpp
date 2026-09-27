@@ -1,5 +1,5 @@
 /// @file memory_ports.hpp
-/// @brief Порты `Outbox` и `InboundLog` в памяти — для тестов бота и webhook.
+/// @brief Порты `Outbox`, `InboundLog` и `DialogStore` в памяти — для тестов бота и webhook.
 #pragma once
 
 #include <map>
@@ -62,6 +62,29 @@ class MemoryInboundLog final : public InboundLog {
   mutable std::mutex mutex_;
   std::set<std::string> seen_;
   std::map<std::string, std::string> processed_;
+};
+
+class MemoryDialogStore final : public DialogStore {
+ public:
+  drogon::Task<Result<std::optional<Dialog>>> get(std::int64_t max_user_id) override {
+    const std::scoped_lock lock(mutex_);
+    const auto it = dialogs_.find(max_user_id);
+    co_return it == dialogs_.end() ? std::optional<Dialog>{} : std::optional<Dialog>{it->second};
+  }
+  drogon::Task<Result<Ok>> set(std::int64_t max_user_id, Dialog dialog) override {
+    const std::scoped_lock lock(mutex_);
+    dialogs_[max_user_id] = std::move(dialog);
+    co_return Ok{};
+  }
+  drogon::Task<Result<Ok>> clear(std::int64_t max_user_id) override {
+    const std::scoped_lock lock(mutex_);
+    dialogs_.erase(max_user_id);
+    co_return Ok{};
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::map<std::int64_t, Dialog> dialogs_;
 };
 
 }  // namespace sk::certd

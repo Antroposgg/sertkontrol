@@ -22,6 +22,8 @@ export interface ApiClient {
   post<T>(path: string, body: unknown): Promise<T>;
   /** POST `multipart/form-data` (граница выставляет браузер). */
   postForm<T>(path: string, form: FormData): Promise<T>;
+  /** POST без тела запроса и ответа (`204`). */
+  postEmpty(path: string): Promise<void>;
   del(path: string): Promise<void>;
 }
 
@@ -76,6 +78,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     },
     async postForm<T>(path: string, form: FormData): Promise<T> {
       return (await (await request('POST', path, form)).json()) as T;
+    },
+    async postEmpty(path: string): Promise<void> {
+      await request('POST', path);
     },
     async del(path: string): Promise<void> {
       await request('DELETE', path);

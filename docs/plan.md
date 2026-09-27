@@ -7,7 +7,7 @@
 
 Работа идёт этапами 0–4. Этап начинается только по команде, заканчивается ворота-проверкой (см. [`CLAUDE.md`](../CLAUDE.md#ворота-проверка)).
 
-**Текущий этап: 1 — завершён 2026-09-27 (ворота зелёные). Следующий — 2, по команде.**
+**Текущий этап: 2 — завершён 2026-09-28: ворота зелёные, кроме п. 5 (Docker) — не выполнялся в среде этапа, см. §6.4. Следующий — 3, по команде.**
 
 ---
 
@@ -78,7 +78,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | `fake::recognize` (заранее заданный ответ) | `libs/contracts/fakes` | `libs/recog` | 1 ✔ заменено |
 | `FakeDomainService` (в памяти) | `apps/certd/fake_domain.*` | `DomainServiceImpl` (PG + снапшот) | 1 ✔ (остаётся для тестов бота) |
 | `FakeSource` | `apps/ingest/fake_source.hpp` | Демо-адаптер `data/demo` ✔, затем адаптер набора ФСА | 1 ✔ / после подтверждения данных |
-| `ingest --demo / --once / --daemon` пишут «не реализовано» и выходят с кодом 0 | `apps/ingest/main.cpp` | Реальные режимы | `--demo` ✔ 1; `--daemon` — 2 |
+| `ingest --demo / --once / --daemon` пишут «не реализовано» и выходят с кодом 0 | `apps/ingest/main.cpp` | Реальные режимы | `--demo` ✔ 1 (пара N/N+1 — 2 ✔); `--daemon` ✔ 2; `--once` — после подтверждения данных |
 | `/healthz` не требует снапшот | `apps/certd/health.cpp` (`snapshot_required=false`) | Требовать загруженный снапшот | 1 ✔ |
 
 ---
@@ -105,7 +105,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 |---|---|---|
 | 0 | Каркас | ✔ завершён, ворота зелёные |
 | 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | ✔ завершён 2026-09-27, ворота зелёные |
-| 2 | Обновление и уведомления (F5, F6) | ожидает команды |
+| 2 | Обновление и уведомления (F5, F6) | ✔ завершён 2026-09-28; ворота зелёные, кроме Docker (§6.4) |
 | 3 | Нечёткий поиск и надёжность | ожидает команды |
 | 4 | Should: F7–F10 | по отдельной команде |
 
@@ -172,13 +172,13 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | Заглушка | Где | Заменяется | Этап |
 |---|---|---|---|
 | Ближайшие номера — только та же серия/год, обычное расстояние Левенштейна; вопрос «Это номер …?» не задаётся | `libs/verify` | Взвешенный Левенштейн, варианты серии, пороги, подтверждение | 3 |
-| Отправитель outbox без token bucket и джиттера | `apps/certd/outbox_sender` | Двухуровневый лимитер (АРХ §7.6) | 2 |
-| Загрузка снапшота при старте + опрос раз в 5 с | `apps/certd/snapshot_loader` | `LISTEN snapshot_ready` и swap | 2 |
-| `simulate_update` / `reset_demo` возвращают `forbidden` | `DomainServiceImpl` | Демо-режим N/N+1 | 2 |
+| Отправитель outbox без token bucket и джиттера | `apps/certd/outbox_sender` | Двухуровневый лимитер (АРХ §7.6) | 2 ✔ |
+| Загрузка снапшота при старте + опрос раз в 5 с | `apps/certd/snapshot_loader` | `LISTEN snapshot_ready` и swap | 2 ✔ |
+| `simulate_update` / `reset_demo` возвращают `forbidden` | `DomainServiceImpl` | Демо-режим N/N+1 | 2 ✔ |
 | Фото → 415 | `libs/recog` | OCR (F7), QR с камеры (F10) | 4 |
-| Кнопка «Указать поставщика» в боте отсутствует (ИНН поставщика — в мини-приложении) | `apps/certd/bot` | Диалог ввода ИНН | 2 |
-| Экран «Документ» отсутствует; «Данные» — без демо-кнопки | `web/` | Карточка с историей, «Симулировать обновление» | 2 |
-| Пагинация портфеля в интерфейсе («Показать ещё») | `web/src/screens/Portfolio.tsx` | Кнопка по `next_cursor` | 2 |
+| Кнопка «Указать поставщика» в боте отсутствует (ИНН поставщика — в мини-приложении) | `apps/certd/bot` | Диалог ввода ИНН | 2 ✔ |
+| Экран «Документ» отсутствует; «Данные» — без демо-кнопки | `web/` | Карточка с историей, «Симулировать обновление» | 2 ✔ |
+| Пагинация портфеля в интерфейсе («Показать ещё») | `web/src/screens/Portfolio.tsx` | Кнопка по `next_cursor` | 2 ✔ |
 
 ### 5.5. Результат ворот этапа 1 (чистый клон, те же скрипты, что в CI)
 
@@ -205,3 +205,83 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 
 Время ответа F1: вердикт по снапшоту — микросекунды, ответ REST в тестах — единицы миллисекунд; p95 на
 настоящем MAX (webhook → отправка) измеряется после подключения бота — пункт ручной проверки.
+
+---
+
+## 6. Этап 2 — обновление данных и уведомления (детальный план)
+
+Цель: новая версия данных → ровно одно уведомление владельцу изменившегося документа; демо-сценарий жюри
+(N → «Симулировать обновление» → N+1 → уведомление → «Сбросить демо») одним аккаунтом.
+
+### 6.1. Решения этапа
+
+| # | Решение | Почему |
+|---|---|---|
+| 1 | Демо-пара — фиксированные версии 1 (N, `demo_stage = 0`) и 2 (N+1, `demo_stage = 1`); роль версии — колонка `snapshot_version.demo_stage` (миграция `0003`) | `certd` держит N и N+1 открытыми одновременно и выбирает по стадии пользователя, а не по номеру версии |
+| 2 | `registry_change`, перевод версии в `ready` и `pg_notify('snapshot_ready', v)` — одна транзакция | Версия не бывает видна без своих изменений; NOTIFY доставляется только после COMMIT |
+| 3 | diff — merge-join двух снапшотов в порядке (`key_hash`, канонический номер), O(n + m), без хеш-таблиц | Оба снапшота уже отсортированы (формат v1); память O(1) сверх изменений |
+| 4 | `notify_changes(v)` сравнивает `portfolio_item.last_status` со снапшотом, а не только с `registry_change` | Закрывает гонку «документ добавлен во время сборки»; пропущенные версии сворачиваются в одно сообщение |
+| 5 | Пачка `notify_changes` — одна SQL-инструкция (CTE: `UPDATE … WHERE last_version < v` → `INSERT notification ON CONFLICT DO NOTHING` → `INSERT outbox` только для реально вставленных) | Атомарность без явной транзакции в корутине; повтор после падения и два исполнителя не дублируют сообщение |
+| 6 | Очередь задач — таблица `job` (ADR-0005): аренда `FOR UPDATE SKIP LOCKED` на 5 мин, backoff min(30 с·2^(n−1), 1 ч), 5 попыток, затем `run_at = infinity` с `last_error` | Задача переживает рестарт; зависшая аренда истекает сама |
+| 7 | На каждую боевую версию — две задачи: `v:1` сразу и `v:2` через 10 мин | Второй проход подбирает документы, поставленные на контроль в окно сборки |
+| 8 | Отправитель outbox — `SendLimiter` (глобально C = 5, r = 25/с; чат C = 1, r = 1/с); нет токена чата — все сообщения чата откладываются без траты попытки; 429/5xx — повтор через min(2^(n−1) с, 5 мин)·U(0,5; 1), 429 обнуляет глобальное ведро; 8 попыток | АРХ §7.6: в любом окне τ ≤ C + r·τ вызовов — 30/с и 2/с в чат, ровно лимиты MAX |
+| 9 | «Симулировать обновление» синхронно: `demo_stage` 0 → 1 и `notify_user` против N+1; ответ `200 {notified}`; история — `GET /history?number=`; `POST /demo/reset` | [ADR-0014](adr/0014-history-and-demo-endpoints.md) |
+| 10 | Демо-пользователь не видит боевых данных и наоборот: `SnapshotSet::for_user` выбирает по `is_demo` и стадии; `simulate_update` боевому — `403` | КЕЙС §2 п.10: тестовые данные не смешиваются с настоящими |
+| 11 | Рендер уведомления — в боте (`bot::render_change_notice`), домен получает его через `NoticeRenderer` из `main.cpp` | Граф зависимостей CLAUDE.md: домен не зависит от бота |
+| 12 | Диалог «Указать поставщика» — `dialog_state` с TTL 30 мин; не-цифры или вложение закрывают диалог и обрабатываются как обычное сообщение | Пользователь не «застревает» в диалоге, номер документа в ответ не теряется |
+| 13 | `ingest --daemon` — ежедневно в 04:00 МСК (UTC+3 без переходов), остановка по SIGTERM за ≤ 1 с; `--once` пишет, что источник не подтверждён | Адаптер набора ФСА — после подтверждения данных (АРХ §1, главный риск) |
+| 14 | Очистка по срокам хранения (АРХ §10) — задача `cleanup` раз в сутки: `check_log` 90 дн., `inbound_update` 7 дн., отправленный/отвергнутый outbox 30 дн., `dialog_state` 1 день | Персональные данные не копятся бессрочно |
+
+### 6.2. Работы
+
+| # | Модуль | Результат | F | Тест |
+|---|---|---|---|---|
+| 2.1 | `libs/snapshot` | `diff(before, after, sink)` → `DocChange`, `DiffStats` (в т. ч. переходы статусов); `find_index` | F5 | `DiffTest.*` (включая property «diff ≡ наивный std::map» на 150 случайных парах) |
+| 2.2 | `libs/maxapi` | `TokenBucket`, `SendLimiter` | F5 | `TokenBucket.*`, `SendLimiter.*` (property «≤ C + r·τ в любом окне», 8 000 запросов) |
+| 2.3 | `data/demo`, `apps/ingest`, `db` | `next.tsv` (5 изменений), `run_demo_pair`, `RegistryDb::publish`, `--daemon`; миграция `0003` | F5, F6 | `DemoPair.*` (в т. ч. `LISTEN` через libpq), `RegistryJson.*`, `Schedule.*`, `schema_test.sql` |
+| 2.4 | `apps/certd` | `SnapshotSet` + `SnapshotLoader` (`LISTEN` + опрос 60 с), `JobQueue`/`JobRunner`, `NotifyService`, `OutboxSender` с лимитером, `cleanup_retention`, домен: `simulate_update`, `reset_demo`, `history`, `attach_supplier` | F5, F6 | `DomainPgTest.*`, `PortsPgTest.*`, `RestApiDemo.*` |
+| 2.5 | `apps/certd/bot` | `render_change_notice` (≤ 4000 символов, одно сообщение на пользователя), диалог ИНН, кнопка `s:` | F5 | `BotTest.SupplierDialog`, `Card.*` |
+| 2.6 | `openapi.yaml` | 1.1.0: `/history`, `/demo/simulate-update`, `/demo/reset`, поля `DataStatus` | F6 | `openapi_test`, `RestApiDemo.SimulateHistoryAndReset` |
+| 2.7 | `web/` | «Документ» (карточка + история), демо-блок на «Данных», «Показать ещё» и «Открыть» в портфеле | F5, F6 | `Document.test.tsx`, `Data.test.tsx`, `Portfolio.test.tsx`, `App.test.tsx`, `format.test.ts` |
+| 2.8 | compose, CI | `ingest-demo` (разовый) + `ingest` (демон); smoke проверяет оба | F6 | `compose-smoke.sh` |
+| 2.9 | Сценарий жюри | Webhook → PDF → «На контроль» → «Симулировать обновление» → отправитель → ровно одно уведомление | F5, F6 | `JuryScenarioTest.ExtractWatchSimulateNotify` |
+
+### 6.3. Заглушки этапа 2
+
+| Заглушка | Где | Заменяется | Этап |
+|---|---|---|---|
+| `ingest --once` / ежедневный запуск не собирают боевой снапшот | `apps/ingest` | Адаптер набора ФСА (C3) | после подтверждения данных |
+| Лимитер и отправитель — в памяти одного процесса `certd` | `apps/certd/pg_ports`, `libs/maxapi` | Общий лимитер в PostgreSQL при нескольких экземплярах | при масштабировании (АРХ §3) |
+| «Подробнее» (`start_param = check-<id>`) открывает «Портфель», а не документ | `web/` | Эндпоинт «проверка по id» + разбор `start_param` | 3 |
+| SKU в уведомлении — только если задан; ввод SKU в боте отсутствует | `apps/certd/bot` | Импорт CSV (F9) | 4 |
+| Мини-приложение не спрашивает согласие на обработку данных, REST его не проверяет (в боте проверяется) — пробел этапа 1, АРХ §10 | `web/`, `apps/certd/rest_api.cpp` | Экран согласия + `POST /me/consent` (C7) и проверка в `DomainService` | 3 |
+
+### 6.4. Результат ворот этапа 2 (те же скрипты, что в CI)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 (unity) и clang 18 с `-Werror` из чистого клона, clang-tidy (все 67 файлов), clang-format, eslint, tsc strict | 0 ошибок, 0 предупреждений; сборка + тесты из чистого клона: GCC 118 с, clang ASan/UBSan 138 с |
+| 2 | Тесты ×2, ASan/UBSan | C++ 203/203 (каждый дважды, с PostgreSQL 16, 0 пропущенных); web 57/57 (дважды); санитайзеры без находок |
+| 3 | Покрытие | C++ 89,8% строк (3056/3402); web 99,61% строк (258/259) |
+| 4 | Шаги CI локально | все, кроме Docker-шагов, зелёные; `db-migrations` — тот же сценарий на нативном PostgreSQL 16.15 (дважды + `schema_test.sql`) |
+| 5 | `docker build --no-cache` / compose | **не выполнялся**: в среде этапа нельзя скачивать базовые образы. Вместо compose-smoke — нативный прогон: `ingest --demo` → `certd` → `/healthz` 200, демо-сценарий через REST (`simulate-update` → `{"notified":1}`, повтор → `0`, история, `reset` → 204), `NOTIFY` новой боевой версии → загрузка → `notify_changes` → `notification` за 1 с. Команда для закрытия пункта: `scripts/ci/docker-build.sh && scripts/ci/compose-smoke.sh` |
+| 6 | Критерии F этапа | таблица 6.5; сценарий жюри целиком — `JuryScenarioTest.ExtractWatchSimulateNotify` (0,6 с) |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонения — [ADR-0014](adr/0014-history-and-demo-endpoints.md) |
+| 8 | Документация | README модулей, CLAUDE.md, этот план, `openapi.yaml` 1.1.0, `docs/rules.md`, журнал контрактов |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ в `git log` нет |
+
+Найдено и исправлено попутно (пробелы этапа 1): правило V5 каталога R2 («номер текущего года мог появиться после
+даты данных») не было реализовано — `not_found.recent`; журнал `certd` при запуске вне терминала буферизовался
+блоками и не был виден в `docker compose logs` до остановки — включена построчная буферизация.
+
+### 6.5. F-требования этапа 2 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F5 | Смена статуса наблюдаемого документа → ровно одно сообщение ≤ 15 мин после готовности снапшота | `libs/snapshot/src/diff.cpp`, `apps/ingest/registry_db.cpp` (`publish` + NOTIFY), `apps/certd/snapshot_loader.cpp`, `jobs.cpp`, `notify.cpp`, `pg_ports.cpp` (`OutboxSender`), `libs/maxapi/src/rate_limit.cpp`, `bot/card.cpp` (`render_change_notice`) | `DiffTest.MatchesNaiveMapOnRandomPairs`, `DemoPair.PublishesBothVersionsWithChangesAndNotify`, `PortsPgTest.NotifyVersionIdempotentAcrossCrash`, `PortsPgTest.JobQueueLeaseRetryAndExhaustion`, `PortsPgTest.OutboxSenderDefersChatOverLimit`, `SendLimiter.WindowBoundHoldsForRandomTraffic`, `Card.ChangeNoticeOneMessagePerUser`, `JuryScenarioTest.ExtractWatchSimulateNotify` |
+| F6 | Демо N / N+1, «Симулировать обновление», всё помечено тестовым; проверяющий проходит сценарий одним аккаунтом за 5 минут | `data/demo/next.tsv`, `apps/ingest/demo_pair.cpp`, `apps/certd/snapshot_set.hpp`, `DomainServiceImpl::{simulate_update, reset_demo, history}`, `rest_api.cpp`, `web/src/screens/{Data,Document}.tsx` | `DomainPgTest.DemoSimulateNotifiesOnceAndResetRepeats`, `DomainPgTest.HistoryFollowsDemoStage`, `DomainPgTest.DemoForbiddenForProdUsers`, `RestApiDemo.SimulateHistoryAndReset`, web `Data.test.tsx`, `Document.test.tsx`, `JuryScenarioTest.ExtractWatchSimulateNotify` |
+
+Оценка «≤ 15 мин» для F5: NOTIFY доходит сразу после COMMIT, при потере — опрос раз в 60 с; задача `v:1` ставится
+с `run_at = now()`, исполнитель опрашивает очередь раз в секунду, отправитель — раз в 0,3 с. Худший случай при сбоях
+задачи: 60 с + повторы через 30, 60, 120, 240 с = 510 с ≈ 8,5 мин < 15 мин; при исправной БД — секунды (в тесте жюри — < 1 с).
+Отправка N уведомлений ограничена лимитером: 25 сообщений/с, т. е. 15 мин ≈ 22 500 пользователей с изменениями.

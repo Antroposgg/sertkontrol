@@ -118,6 +118,34 @@ struct DataStatus {
   Date source_date{};
   std::size_t record_count{0};
   bool is_demo{true};
+  DemoStage demo_stage{DemoStage::kBase};  ///< Стадия демо пользователя (для боевых данных — `kBase`).
+  bool demo_update_available{false};  ///< Демо-снапшот N+1 загружен — «Симулировать обновление» доступно.
+};
+
+/// Итог «Симулировать обновление» (F6).
+struct DemoUpdate {
+  std::size_t notified{0};  ///< Сколько документов портфеля изменилось — столько строк `notification`.
+};
+
+/// Состояние документа в одной версии данных (`registry_change.before/after`, C8).
+struct DocStateView {
+  snapshot::Status status{snapshot::Status::kUnknown};
+  std::optional<Date> expiry_date{};
+  std::optional<Date> status_date{};
+};
+
+/// Одно изменение документа в реестре.
+struct HistoryEntry {
+  std::uint64_t version{0};
+  Date data_date{};  ///< Дата данных версии, в которой замечено изменение.
+  std::optional<DocStateView> before{};  ///< Пусто — документ появился.
+  std::optional<DocStateView> after{};   ///< Пусто — документ исчез из данных.
+};
+
+/// История документа для экрана «Документ»: изменения, которые видит пользователь, от новых к старым.
+struct DocumentHistory {
+  std::string doc_key{};
+  std::vector<HistoryEntry> entries{};
 };
 
 /// C6 — доменный сервис. Реализации: `DomainServiceImpl` (PostgreSQL + снапшот), `FakeDomainService` (тесты).
@@ -155,16 +183,28 @@ class DomainService {
   /// Поставить на контроль все номера из своей пачки проверок.
   virtual drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) = 0;
 
+  /// Указать поставщика документа из своей проверки `check_log.id`: документ без SKU ставится на контроль с
+  /// поставщиком, а если уже на контроле — поставщик записывается в эту запись. ИНН проверяется по
+  /// контрольным цифрам (АРХ §7.7) → `kInvalidArgument`. Чужая проверка — `kNotFound`.
+  virtual drogon::Task<Result<AddResult>> attach_supplier(UserContext user, std::int64_t check_id,
+                                                          std::string supplier_inn) = 0;
+
   /// Снять с контроля. Чужой или несуществующий id → `kNotFound`. F4.
   virtual drogon::Task<Result<Ok>> remove_from_portfolio(UserContext user, std::int64_t item_id) = 0;
 
   /// Версия и дата данных, которые видит пользователь (с учётом `demo_stage`).
   virtual drogon::Task<Result<DataStatus>> data_status(UserContext user) = 0;
 
-  /// Демо: перевести пользователя на N+1 и запустить уведомления только для него. F6, этап 2.
-  virtual drogon::Task<Result<Ok>> simulate_update(UserContext user) = 0;
+  /// История изменений документа (`registry_change`) в данных, которые видит пользователь. Номер — в любой
+  /// раскладке; не разобран — `kNumberNotRecognized`. Пустая история — не ошибка.
+  virtual drogon::Task<Result<DocumentHistory>> history(UserContext user, std::string number) = 0;
 
-  /// Демо: вернуть пользователя к N. F6, этап 2.
+  /// Демо: перевести пользователя на N+1 и уведомить только его об изменениях его портфеля (F6).
+  /// Не демо-пользователь — `kForbidden`; N+1 не загружен — `kSnapshotUnavailable`. Повтор идемпотентен.
+  virtual drogon::Task<Result<DemoUpdate>> simulate_update(UserContext user) = 0;
+
+  /// Демо: вернуть пользователя к N — статусы портфеля по N, уведомления о N+1 удалены, сценарий можно
+  /// пройти заново (F6).
   virtual drogon::Task<Result<Ok>> reset_demo(UserContext user) = 0;
 };
 

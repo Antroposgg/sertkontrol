@@ -50,8 +50,8 @@ services:
         APT_MIRROR: ${APT_MIRROR:-http://mirror.yandex.ru/ubuntu}
     image: sertkontrol:local
     depends_on:
-      # ingest --demo собирает снапшот и регистрирует версию; certd загружает её при старте.
-      ingest:
+      # ingest-demo собирает демо-пару N/N+1 и регистрирует версии; certd загружает их при старте.
+      ingest-demo:
         condition: service_completed_successfully
     environment:
       <<: *pg-env
@@ -76,21 +76,35 @@ services:
       retries: 20
     restart: unless-stopped
 
-  ingest:
+  # Демо-пара N/N+1 при каждом старте (docs/plan.md, противоречие 1): сборка детерминирована, повтор идемпотентен.
+  ingest-demo:
     build: *build
     image: sertkontrol:local
     depends_on:
       migrate:
         condition: service_completed_successfully
     entrypoint: ["ingest"]
-    # Собирает демо-снапшот при старте (docs/plan.md, противоречие 1); N+1 — этап 2.
     command: ["--demo", "--snapshot-dir", "/data/snapshots", "--demo-dir", "/opt/sertkontrol/demo"]
     environment:
       <<: *pg-env
     volumes:
       - snapshots:/data/snapshots
-      - sources:/data/sources
     restart: "no"
+
+  # Ежедневное обновление в 04:00 МСК (АРХ §3). Пока источник ФСА не подтверждён, запуск только пишет об этом в лог.
+  ingest:
+    image: sertkontrol:local
+    depends_on:
+      ingest-demo:
+        condition: service_completed_successfully
+    entrypoint: ["ingest"]
+    command: ["--daemon", "--snapshot-dir", "/data/snapshots"]
+    environment:
+      <<: *pg-env
+    volumes:
+      - snapshots:/data/snapshots
+      - sources:/data/sources
+    restart: unless-stopped
 
   caddy:
     profiles: ["prod"]

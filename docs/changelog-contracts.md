@@ -5,6 +5,11 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-28 | C4 | Правило `not_found.recent` (расчёт): номер не найден, а год в номере равен году даты данных → «мог быть зарегистрирован после <даты>, проверьте по QR» | Правило V5 каталога R2 не было реализовано на этапе 1 | 2 |
+| 2026-09-27 | C9 | Действие callback `s:<check_id>` — «Указать поставщика» (ответ пользователя — ИНН, состояние диалога в `dialog_state`); вид сообщения `status_changed` рендерится ботом из `ChangeNotice` (`apps/certd/notify.hpp`) | F5 — уведомление о смене статуса; АРХ §8 «Интерфейс бота», кнопка `[Указать поставщика]` | 2 |
+| 2026-09-27 | C7 | `openapi.yaml` 1.1.0: `GET /history?number=` → `DocumentHistory`, `POST /demo/simulate-update` → `200 DemoUpdate`, `POST /demo/reset` → `204`; `DataStatus.demo_stage`, `DataStatus.demo_update_available`; ответ `403 forbidden` | Экран «Документ» и демо-кнопки (F5, F6); отличия от АРХ §8 — [ADR-0014](adr/0014-history-and-demo-endpoints.md) | 2 |
+| 2026-09-27 | C6 | Новые `attach_supplier(ctx, check_id, supplier_inn)` и `history(ctx, number)` → `DocumentHistory`; `simulate_update` → `Result<DemoUpdate>` (число уведомлений) вместо `Result<Ok>`; `DataStatus` + `demo_stage`, `demo_update_available`; реализации: `DomainServiceImpl`, `FakeDomainService` | Кнопка «Указать поставщика» (АРХ §8), история на экране «Документ», результат демо-кнопки (ADR-0014) | 2 |
+| 2026-09-27 | C8 | Миграция `0003`: `snapshot_version.demo_stage` (0 — демо N, 1 — демо N+1, у боевых NULL; CHECK «только у демо»), `job.last_error`; `registry_change` пишется в одной транзакции с переводом версии в `ready` и `NOTIFY snapshot_ready, '<version>'` | F6: certd держит демо-пару открытой и различает её не по номеру версии; F5: версия не видна без своих изменений | 2 |
 | 2026-09-26 | C9 | Действия callback: добавлены `W` (все из пачки), `c` (согласие), `h` (справка); `s`, `y`, `n` зарезервированы | Сводка «Поставить все на контроль», согласие при старте (АРХ §8, §10) | 1 |
 | 2026-09-26 | C8 | Миграция `0002`: `check_log.batch_id` | Аргумент кнопки «Поставить все» — id пачки проверок, а не список номеров (АРХ §8) | 1 |
 | 2026-09-26 | C7 | Первая редакция `openapi.yaml` (OpenAPI 3.1): `/me`, `/check`, `/check/file`, `/portfolio` (GET/POST), `/portfolio/{id}` (DELETE), `/data-status`, `/healthz`, `/max/webhook` | Этап 1 | 1 |

@@ -1,13 +1,19 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
+#include <libpq-fe.h>
+
 #include "build.hpp"
+#include "demo_pair.hpp"
 #include "demo_source.hpp"
 #include "normalize.hpp"
 #include "registry_db.hpp"
+#include "schedule.hpp"
+#include "support/checked.hpp"
 #include "support/files.hpp"
 #include "support/pg.hpp"
 
@@ -205,15 +211,132 @@ TEST(RegistryDb, RegistersVersionLifecycle) {
   auto db = RegistryDb::connect(*pg);
   ASSERT_TRUE(db.has_value()) << db.error().detail;
   const auto version = static_cast<std::uint64_t>(test::unique_id());
-  const Date date = year{2026} / month{9} / day{25};
-  ASSERT_TRUE(db.value().mark_building(version, "demo", date, "/data/snapshots/x.bin", true));
+  const VersionInfo info{.version = version,
+                         .source = "demo",
+                         .source_date = year{2026} / month{9} / day{25},
+                         .file_path = "/data/snapshots/x.bin",
+                         .is_demo = true};
+  ASSERT_TRUE(db.value().mark_building(info));
   BuildResult b;
   b.stats.records = 16;
-  ASSERT_TRUE(db.value().mark_ready(version, b));
-  ASSERT_TRUE(
-      db.value().mark_building(version, "demo", date, "/data/snapshots/x.bin", true));  // повтор — сброс
+  ASSERT_TRUE(db.value().publish(version, b, {}, nullptr));
+  ASSERT_TRUE(db.value().mark_building(info));  // повтор — сброс
   ASSERT_TRUE(db.value().mark_failed(version, "тест"));
+  // demo_stage допустим только у демо-версий (CHECK в 0003).
+  auto bad = info;
+  bad.version = version + 1;
+  bad.is_demo = false;
+  bad.demo_stage = 1;
+  EXPECT_FALSE(db.value().mark_building(bad).has_value());
+  // Ошибка внутри publish откатывает транзакцию: версии нет — нечего переводить в ready, но и мусора нет.
+  const std::vector<snapshot::DocChange> changes{{.doc_key = "RUD-X", .after = snapshot::DocState{}}};
+  EXPECT_FALSE(db.value().publish(version + 2, b, changes, nullptr).has_value());
   EXPECT_FALSE(RegistryDb::connect("host=127.0.0.1 port=1 connect_timeout=1").has_value());
+}
+
+TEST(RegistryJson, StateAndStats) {
+  EXPECT_EQ(doc_state_json({.status = Status::kSuspended, .status_date = year{2026} / month{9} / day{26}}),
+            R"({"status":"suspended","expiry_date":null,"status_date":"2026-09-26"})");
+  BuildResult b;
+  b.stats.records = 3;
+  snapshot::DiffStats d{.added = 1, .changed = 1, .unchanged = 1};
+  d.transitions[{Status::kActive, Status::kSuspended}] = 1;
+  EXPECT_EQ(
+      stats_json(b, &d, 2),
+      R"({"records":3,"duplicates":0,"rejected":0,"bytes":0,"changes_written":2,)"
+      R"("diff":{"added":1,"removed":0,"changed":1,"unchanged":1,"transitions":{"active->suspended":1}}})");
+  EXPECT_EQ(stats_json(b, nullptr, 0),
+            R"({"records":3,"duplicates":0,"rejected":0,"bytes":0,"changes_written":0})");
+}
+
+/// Демо-пара без БД: пять сценарных изменений N → N+1 (data/demo/README.md) — ровно те, что ждёт сценарий.
+TEST(DemoPair, NextDiffersByFiveScenarioChanges) {
+  const auto dir = temp_dir("pair");
+  auto base_src = DemoTsvSource::open(demo_dir() / "base.tsv");
+  auto next_src = DemoTsvSource::open(demo_dir() / "next.tsv");
+  ASSERT_TRUE(base_src.has_value() && next_src.has_value());
+  EXPECT_EQ(next_src.value().source_date(), (year{2026} / month{9} / day{26}));
+  const auto base = build_snapshot(base_src.value(), dir, 1, true);
+  const auto next = build_snapshot(next_src.value(), dir, 2, true);
+  ASSERT_TRUE(base.has_value() && next.has_value());
+  EXPECT_EQ(next.value().rejected, 0U);
+  std::map<std::string, snapshot::DocChange> changes;
+  const auto stats = snapshot::diff(*snapshot::open_snapshot(base.value().file).value(),
+                                    *snapshot::open_snapshot(next.value().file).value(),
+                                    [&changes](const snapshot::DocChange& c) { changes[c.doc_key] = c; });
+  EXPECT_EQ(changes.size(), 5U);
+  EXPECT_EQ(stats.added, 1U);
+  EXPECT_EQ(stats.removed, 0U);
+  EXPECT_EQ(stats.changed, 4U);
+  EXPECT_EQ(test::checked(changes.at("RUD-CR.PA08.B.89369/26").after).status, Status::kSuspended);
+  EXPECT_EQ(test::checked(changes.at("RUD-CN.PA01.B.10002/25").after).status, Status::kTerminated);
+  EXPECT_EQ(test::checked(changes.at("RUD-TR.PA03.B.10004/24").after).status, Status::kActive);
+  EXPECT_EQ(test::checked(changes.at("RUC-CN.AЯ46.B.10006/25").after).status, Status::kAnnulled);
+  EXPECT_FALSE(changes.at("RUD-CR.PA07.B.89369/26").before.has_value());
+  std::filesystem::remove_all(dir);
+}
+
+TEST(DemoPair, PublishesBothVersionsWithChangesAndNotify) {
+  const auto pg = test::test_pg();
+  if (!pg) {
+    GTEST_SKIP() << "SK_TEST_PG не задан: запускайте через scripts/ci/with-pg.sh";
+  }
+  // Отдельное соединение слушает канал: NOTIFY должен прийти после COMMIT каждой версии.
+  PGconn* listener = PQconnectdb(pg->c_str());
+  ASSERT_EQ(PQstatus(listener), CONNECTION_OK);
+  PQclear(PQexec(listener, "LISTEN snapshot_ready"));
+  auto db = RegistryDb::connect(*pg);
+  ASSERT_TRUE(db.has_value());
+  const auto dir = temp_dir("pair-pg");
+  for (int run = 0; run < 2; ++run) {  // повторный запуск (каждый старт compose) идемпотентен
+    const auto r = run_demo_pair(db.value(), demo_dir(), dir);
+    ASSERT_TRUE(r.has_value()) << r.error().detail;
+    EXPECT_EQ(r.value().changes.size(), 5U);
+  }
+  PGconn* check = PQconnectdb(pg->c_str());
+  const auto scalar = [check](const char* sql) {
+    PGresult* res = PQexec(check, sql);
+    std::string v = PQntuples(res) > 0 ? PQgetvalue(res, 0, 0) : "";
+    PQclear(res);
+    return v;
+  };
+  EXPECT_EQ(scalar("SELECT count(*) FROM registry_change WHERE version = 2"), "5");
+  EXPECT_EQ(scalar("SELECT count(*) FROM registry_change WHERE version = 1"), "0");
+  EXPECT_EQ(scalar("SELECT string_agg(version || ':' || status || ':' || demo_stage, ',' ORDER BY version) "
+                   "FROM snapshot_version WHERE version IN (1, 2)"),
+            "1:ready:0,2:ready:1");
+  EXPECT_EQ(scalar("SELECT after->>'status' FROM registry_change WHERE version = 2 AND doc_key = "
+                   "'RUD-CR.PA08.B.89369/26'"),
+            "suspended");
+  EXPECT_EQ(scalar("SELECT stats->'diff'->>'changed' FROM snapshot_version WHERE version = 2"), "4");
+  PQfinish(check);
+  PQconsumeInput(listener);
+  std::vector<std::string> payloads;
+  while (PGnotify* n = PQnotifies(listener)) {
+    payloads.emplace_back(n->extra);
+    PQfreemem(n);
+  }
+  PQfinish(listener);
+  EXPECT_EQ(payloads, (std::vector<std::string>{"1", "2", "1", "2"}));
+  std::filesystem::remove_all(dir);
+}
+
+TEST(Schedule, NextDailyRunAtFourMoscow) {
+  using std::chrono::hours;
+  using std::chrono::minutes;
+  using std::chrono::sys_days;
+  const sys_days d = year{2026} / month{9} / day{27};
+  // 04:00 МСК = 01:00 UTC.
+  EXPECT_EQ(next_daily_run(d + hours{0}, kDailyRunAt, kMoscowOffset), d + hours{1});
+  EXPECT_EQ(next_daily_run(d + minutes{59}, kDailyRunAt, kMoscowOffset), d + hours{1});
+  // Ровно в момент запуска — следующий день (иначе демон запустился бы дважды).
+  EXPECT_EQ(next_daily_run(d + hours{1}, kDailyRunAt, kMoscowOffset), d + hours{25});
+  EXPECT_EQ(next_daily_run(d + hours{22}, kDailyRunAt, kMoscowOffset), d + hours{25});
+  // 23:30 UTC — уже 02:30 МСК следующего дня: запуск в 01:00 UTC следующего дня.
+  EXPECT_EQ(next_daily_run(d + hours{23} + minutes{30}, kDailyRunAt, kMoscowOffset), d + hours{25});
+  // Смена года.
+  const sys_days ny = year{2026} / month{12} / day{31};
+  EXPECT_EQ(next_daily_run(ny + hours{2}, kDailyRunAt, kMoscowOffset), ny + hours{25});
 }
 
 }  // namespace

@@ -55,6 +55,16 @@ describe('createApiClient', () => {
     expect(fetchImpl.mock.calls[0]?.[1]?.method).toBe('DELETE');
   });
 
+  it('POST без тела и ответа', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const api = createApiClient({ getInitData: () => 'i', fetchImpl });
+    await expect(api.postEmpty('/demo/reset')).resolves.toBeUndefined();
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe('/api/v1/demo/reset');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBeUndefined();
+  });
+
   it('ошибка RFC 9457 → ApiError с кодом', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

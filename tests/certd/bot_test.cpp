@@ -27,8 +27,9 @@ class BotTest : public ::testing::Test {
   FakeDomainService domain{fake::FakeSnapshot::three_records(), fake::FakeSnapshot::three_records(),
                            year{2026} / month{9} / day{26}};
   MemoryOutbox outbox;
+  MemoryDialogStore dialogs;
   maxapi::RecordingBotApi api;
-  Bot bot{domain, outbox, api, BotConfig{.max_file_bytes = 1000, .card = {.open_app = true}}};
+  Bot bot{domain, outbox, dialogs, api, BotConfig{.max_file_bytes = 1000, .card = {.open_app = true}}};
 
   std::string handle(maxapi::Update u) { return drogon::sync_wait(bot.handle(std::move(u))); }
   std::string text(const std::string& t) {
@@ -200,13 +201,103 @@ TEST_F(BotTest, AttachmentErrors) {
   EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos);
 }
 
+TEST_F(BotTest, SupplierDialog) {
+  consent();
+  text("RU D-CR.PA08.B.89369/26");
+  const auto card = last();
+  ASSERT_TRUE(has_payload(card, "s:"));
+  const auto supplier_button = card.buttons[0][1].payload;
+  press(supplier_button);
+  EXPECT_NE(last().text.find("ИНН поставщика"), std::string::npos);
+  // Неверный ИНН — диалог продолжается.
+  text("123");
+  EXPECT_NE(last().text.find("контрольных цифр"), std::string::npos);
+  text("7700000016");
+  const auto done = last();
+  EXPECT_NE(done.text.find("поставщик — ИНН 7700000016"), std::string::npos);
+  ASSERT_TRUE(has_payload(done, "d:"));
+  EXPECT_EQ(drogon::sync_wait(domain.me({.max_user_id = kUser})).value().portfolio_count, 1U);
+  // Повторное указание поставщика у документа на контроле — та же запись, без дубля.
+  press(supplier_button);
+  text("7700000016");
+  EXPECT_EQ(drogon::sync_wait(domain.me({.max_user_id = kUser})).value().portfolio_count, 1U);
+  // Отмена.
+  press(supplier_button);
+  text("отмена");
+  EXPECT_NE(last().text.find("не указываю"), std::string::npos);
+  EXPECT_FALSE(drogon::sync_wait(dialogs.get(kUser)).value().has_value());
+  // Номер документа вместо ИНН — диалог сброшен, идёт обычная проверка.
+  press(supplier_button);
+  text("RU C-RU.AB12.B.00017/24");
+  EXPECT_EQ(last().kind, maxapi::MessageKind::kVerdict);
+  EXPECT_FALSE(drogon::sync_wait(dialogs.get(kUser)).value().has_value());
+  // Чужая проверка.
+  press("s:999999");
+  text("7700000016");
+  EXPECT_NE(last().text.find("Не получилось"), std::string::npos);
+}
+
 TEST_F(BotTest, OtherUpdatesIgnored) {
   EXPECT_EQ(handle(maxapi::OtherUpdate{.type = "dialog_muted"}), "");
   EXPECT_TRUE(outbox.entries().empty());
 }
 
+TEST(Card, ChangeNoticeOneMessagePerUser) {
+  const ChangeNotice n{.max_user_id = kUser,
+                       .items = {{.item_id = 1,
+                                  .doc_key = "RUD-CR.PA08.B.89369/26",
+                                  .sku = "ЧАЙ-1",
+                                  .before = snapshot::Status::kActive,
+                                  .after = snapshot::Status::kSuspended,
+                                  .status_date = year{2026} / month{9} / day{26},
+                                  .suspended_until = year{2026} / month{12} / day{26}},
+                                 {.item_id = 2,
+                                  .doc_key = "RUD-CR.PA07.B.89369/26",
+                                  .before = snapshot::Status::kUnknown,
+                                  .after = snapshot::Status::kActive}},
+                       .data_date = year{2026} / month{9} / day{26},
+                       .is_demo = true};
+  const auto msgs = render_change_notice(n, {.open_app = true});
+  ASSERT_EQ(msgs.size(), 1U);
+  const auto& m = msgs[0];
+  EXPECT_EQ(m.kind, maxapi::MessageKind::kStatusChanged);
+  EXPECT_NE(m.text.find("<b>приостановлен</b> до 26.12.2026 с 26.09.2026 (было: действует), SKU ЧАЙ-1"),
+            std::string::npos);
+  EXPECT_NE(m.text.find("(раньше в данных не было)"), std::string::npos);
+  EXPECT_NE(m.text.find("Данные реестра на 26.09.2026"), std::string::npos);
+  EXPECT_NE(m.text.find("Тестовые данные"), std::string::npos);
+  ASSERT_EQ(m.buttons.size(), 1U);
+  EXPECT_EQ(m.buttons[0][0].kind, Button::Kind::kOpenApp);
+  EXPECT_TRUE(maxapi::validate(m).has_value());
+  EXPECT_TRUE(render_change_notice({.max_user_id = kUser}, {}).empty());
+}
+
+TEST(Card, LongChangeNoticeSplitsByDocuments) {
+  ChangeNotice n{.max_user_id = kUser, .data_date = year{2026} / month{9} / day{26}};
+  for (int i = 0; i < 120; ++i) {
+    n.items.push_back({.item_id = i + 1,
+                       .doc_key = "RUD-CN.PA01.B." + std::to_string(10000 + i) + "/25",
+                       .sku = "ДЛИННЫЙ-АРТИКУЛ-" + std::to_string(i),
+                       .before = snapshot::Status::kActive,
+                       .after = snapshot::Status::kTerminated});
+  }
+  const auto msgs = render_change_notice(n, {});
+  ASSERT_GT(msgs.size(), 1U);
+  std::size_t lines = 0;
+  for (const auto& m : msgs) {
+    EXPECT_TRUE(maxapi::validate(m).has_value()) << maxapi::utf8_length(m.text);
+    EXPECT_LE(maxapi::utf8_length(m.text), maxapi::kMaxTextLength);
+    EXPECT_NE(m.text.find("Данные реестра на"), std::string::npos);  // каждое сообщение самодостаточно
+    for (std::size_t pos = m.text.find("• "); pos != std::string::npos; pos = m.text.find("• ", pos + 1)) {
+      ++lines;
+    }
+  }
+  EXPECT_EQ(lines, 120U);  // ни одна строка не потеряна и не порвана
+}
+
 TEST(Card, ParseCallback) {
   EXPECT_EQ(parse_callback("w:17").value_or(Callback{}).arg, 17);
+  EXPECT_EQ(parse_callback("s:5").value_or(Callback{}).action, 's');
   EXPECT_EQ(parse_callback("W:3").value_or(Callback{}).action, 'W');
   for (const char* bad : {"", "w", "w:", "w:x", "w:-1", "w:0", "q:1", "w1", "w:1x"}) {
     EXPECT_FALSE(parse_callback(bad).has_value()) << bad;

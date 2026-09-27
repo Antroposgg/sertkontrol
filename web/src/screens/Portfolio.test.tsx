@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/problem';
+import type { PortfolioItem } from '../api/types';
 import { fakeApi, page } from '../test/fakeApi';
 import { renderWithApi } from '../test/render';
 import { Portfolio } from './Portfolio';
@@ -57,5 +58,35 @@ describe('Портфель', () => {
     });
     await userEvent.click(await screen.findByRole('button', { name: /Снять с контроля/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи');
+  });
+
+  it('показать ещё по курсору; ошибка догрузки; смена фильтра сбрасывает догруженное', async () => {
+    const first = { items: page.items, next_cursor: '7' };
+    const second = { items: [{ ...page.items[0], id: 8, display_number: 'RU Д-2/26' } as PortfolioItem], next_cursor: null };
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new ApiError(problem))
+      .mockResolvedValueOnce(second)
+      .mockResolvedValue({ items: page.items, next_cursor: null });
+    renderWithApi(<Portfolio />, fakeApi({ listPortfolio: list }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Показать ещё' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи');
+    expect(list).toHaveBeenLastCalledWith({ cursor: '7' });
+    await userEvent.click(screen.getByRole('button', { name: 'Показать ещё' }));
+    expect(await screen.findByText('RU Д-2/26')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Показать ещё' })).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText(/Статус/), 'active');
+    await waitFor(() => {
+      expect(screen.queryByText('RU Д-2/26')).not.toBeInTheDocument();
+    });
+    expect(list).toHaveBeenLastCalledWith({ status: 'active' });
+  });
+
+  it('открыть документ', async () => {
+    const open = vi.fn();
+    renderWithApi(<Portfolio openDocument={open} />, fakeApi());
+    await userEvent.click(await screen.findByRole('button', { name: /Открыть RU Д-CR/ }));
+    expect(open).toHaveBeenCalledWith('RU Д-CR.PA08.B.89369/26');
   });
 });

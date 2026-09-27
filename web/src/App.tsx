@@ -5,10 +5,25 @@ import { DemoBadge } from './components/DemoBadge';
 import { getWebApp } from './max/bridge';
 import { Add } from './screens/Add';
 import { Data } from './screens/Data';
+import { Document } from './screens/Document';
 import { Portfolio } from './screens/Portfolio';
 import { SCREENS, type ScreenId } from './screens';
 
-const CONTENT: Record<ScreenId, () => React.JSX.Element> = { portfolio: Portfolio, add: Add, data: Data };
+/** Навигация, доступная экранам. */
+interface ScreenProps {
+  /** Номер для экрана «Документ». */
+  documentNumber: string;
+  /** Открыть экран «Документ» с номером. */
+  openDocument: (number: string) => void;
+}
+
+const CONTENT: Record<ScreenId, (props: ScreenProps) => React.JSX.Element> = {
+  portfolio: ({ openDocument }) => <Portfolio openDocument={openDocument} />,
+  // key — новый номер пересоздаёт экран вместе с полем ввода.
+  document: ({ documentNumber }) => <Document key={documentNumber} number={documentNumber} />,
+  add: () => <Add />,
+  data: () => <Data />,
+};
 
 /** Платформа для MAX UI: iOS-оформление на iOS, иначе Android-оформление. */
 function platform(): 'ios' | 'android' {
@@ -18,6 +33,7 @@ function platform(): 'ios' | 'android' {
 /** Оболочка мини-приложения: навигация по экранам и пометка тестовых данных. */
 export function App() {
   const [screen, setScreen] = useState<ScreenId>('portfolio');
+  const [documentNumber, setDocumentNumber] = useState('');
   const current = SCREENS.find((s) => s.id === screen) ?? SCREENS[0];
   const Content = CONTENT[current.id];
 
@@ -44,7 +60,13 @@ export function App() {
         </nav>
         <section aria-labelledby="screen-title">
           <h2 id="screen-title">{current.title}</h2>
-          <Content />
+          <Content
+            documentNumber={documentNumber}
+            openDocument={(number) => {
+              setDocumentNumber(number);
+              setScreen('document');
+            }}
+          />
         </section>
       </main>
     </MaxUI>

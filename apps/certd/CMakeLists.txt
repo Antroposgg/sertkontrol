@@ -8,6 +8,9 @@ add_library(sk_certd_core STATIC
   recognition_pool.cpp
   domain_service.cpp
   snapshot_loader.cpp
+  jobs.cpp
+  notify.cpp
+  maintenance.cpp
   json_views.cpp
   rest_api.cpp
   pg_ports.cpp

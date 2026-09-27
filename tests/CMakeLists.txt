@@ -28,6 +28,7 @@ target_compile_definitions(canon_test PRIVATE SK_CANON_GOLDEN="${CMAKE_CURRENT_S
 
 sk_add_test(snapshot_test
   snapshot/snapshot_test.cpp
+  snapshot/diff_test.cpp
   LIBS sk::snapshot sk::fakes)
 target_include_directories(snapshot_test PRIVATE ${XXHASH_INCLUDE_DIR})
 target_link_libraries(snapshot_test PRIVATE ${XXHASH_LIBRARY})
@@ -47,6 +48,7 @@ target_compile_definitions(recog_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_S
 sk_add_test(maxapi_test
   maxapi/auth_test.cpp
   maxapi/update_message_test.cpp
+  maxapi/rate_limit_test.cpp
   LIBS sk::maxapi OpenSSL::Crypto)
 target_compile_definitions(maxapi_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
@@ -75,6 +77,14 @@ sk_add_test(certd_pg_test
   LIBS sk::certd_core)
 target_compile_definitions(certd_pg_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
+# Сценарий жюри целиком: демо-пара собирается из data/demo тем же кодом, что и в ingest.
+sk_add_test(certd_jury_test
+  certd/jury_scenario_test.cpp
+  LIBS sk::certd_core sk::ingest_core)
+target_compile_definitions(certd_jury_test PRIVATE
+  SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+  SK_DEMO_DIR="${PROJECT_SOURCE_DIR}/data/demo")
+
 sk_add_test(ingest_test
   ingest/cli_test.cpp
   ingest/fake_source_test.cpp
@@ -83,3 +93,6 @@ sk_add_test(ingest_test
 target_compile_definitions(ingest_test PRIVATE
   SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
   SK_DEMO_DIR="${PROJECT_SOURCE_DIR}/data/demo")
+# Тест демо-пары слушает NOTIFY snapshot_ready напрямую через libpq.
+find_package(PostgreSQL REQUIRED)
+target_link_libraries(ingest_test PRIVATE PostgreSQL::PostgreSQL)

@@ -19,3 +19,4 @@
 | [0011](0011-apt-mirror-build-arg.md) | Зеркало apt в Docker-сборке — аргумент `APT_MIRROR` | принят | этап 0 |
 | [0012](0012-mintsifry-root-ca.md) | Корневой сертификат Минцифры в образе certd | принят | этап 1 |
 | [0013](0013-dev-auth-without-max.md) | Мини-приложение без MAX при локальном запуске — dev-пользователь | принят | этап 1 |
+| [0014](0014-history-and-demo-endpoints.md) | История — `GET /history?number=`; `simulate-update` → `200 {notified}`; `POST /demo/reset` | принят | этап 2 |

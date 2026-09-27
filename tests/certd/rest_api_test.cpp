@@ -222,6 +222,78 @@ TEST_F(RestApiTest, AddValidatesBody) {
   expect_problem(add(kAlice, "не номер"), 422, "number_not_recognized");
 }
 
+/// Демо-пара для REST: в N+1 документ 89369/26 приостановлен.
+std::shared_ptr<const fake::FakeSnapshot> updated_snapshot() {
+  const auto base = fake::FakeSnapshot::three_records();
+  std::vector<fake::FakeRecord> records;
+  for (std::size_t i = 0; i < base->size(); ++i) {
+    const auto r = base->record(i);
+    records.push_back({.number = std::string{r.number}, .status = r.status, .expiry_date = r.expiry_date});
+  }
+  for (auto& r : records) {
+    if (r.number == "RUD-CR.PA08.B.89369/26") {
+      r.status = snapshot::Status::kSuspended;
+    }
+  }
+  auto meta = base->meta();
+  meta.version += 1;
+  return std::make_shared<const fake::FakeSnapshot>(std::move(records), meta);
+}
+
+TEST(RestApiDemo, SimulateHistoryAndReset) {
+  FakeDomainService domain{fake::FakeSnapshot::three_records(), updated_snapshot(),
+                           year{2026} / month{9} / day{26}};
+  RestApi api{domain, AuthConfig{.bot_token = std::string{kToken}, .now = test_now}};
+  const auto as = [](long long user, drogon::HttpMethod method = drogon::Get) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(method);
+    req->addHeader("X-Max-Init-Data", test::init_data_for(kToken, user, kAuthDate));
+    return req;
+  };
+  Json::Value add;
+  add["number"] = "RU D-CR.PA08.B.89369/26";
+  auto add_req = drogon::HttpRequest::newHttpJsonRequest(add);
+  add_req->setMethod(drogon::Post);
+  add_req->addHeader("X-Max-Init-Data", test::init_data_for(kToken, kAlice, kAuthDate));
+  ASSERT_EQ(drogon::sync_wait(api.add_to_portfolio(add_req))->getStatusCode(), drogon::k201Created);
+
+  auto history_req = as(kAlice);
+  history_req->setParameter("number", "RU D-CR.PA08.B.89369/26");
+  auto h = RestApiTest::body(drogon::sync_wait(api.history(history_req)));
+  EXPECT_EQ(h["doc_key"].asString(), "RUD-CR.PA08.B.89369/26");
+  EXPECT_EQ(h["entries"].size(), 0U);  // стадия N
+
+  const auto sim = drogon::sync_wait(api.simulate_update(as(kAlice, drogon::Post)));
+  ASSERT_EQ(sim->getStatusCode(), drogon::k200OK);
+  EXPECT_EQ(RestApiTest::body(sim)["notified"].asInt(), 1);
+  const auto ds = RestApiTest::body(drogon::sync_wait(api.data_status(as(kAlice))));
+  EXPECT_EQ(ds["demo_stage"].asString(), "updated");
+  EXPECT_TRUE(ds["demo_update_available"].asBool());
+
+  h = RestApiTest::body(drogon::sync_wait(api.history(history_req)));
+  ASSERT_EQ(h["entries"].size(), 1U);
+  EXPECT_EQ(h["entries"][0]["before"]["status"].asString(), "active");
+  EXPECT_EQ(h["entries"][0]["after"]["status"].asString(), "suspended");
+  EXPECT_EQ(h["entries"][0]["after"]["status_name"].asString(), "приостановлен");
+
+  const auto reset = drogon::sync_wait(api.reset_demo(as(kAlice, drogon::Post)));
+  EXPECT_EQ(reset->getStatusCode(), drogon::k204NoContent);
+  EXPECT_EQ(RestApiTest::body(drogon::sync_wait(api.data_status(as(kAlice))))["demo_stage"].asString(),
+            "base");
+
+  // Ошибки: нет номера, мусор, без initData.
+  RestApiTest::expect_problem(drogon::sync_wait(api.history(as(kAlice))), 400, "invalid_argument");
+  auto garbage = as(kAlice);
+  garbage->setParameter("number", "мусор");
+  RestApiTest::expect_problem(drogon::sync_wait(api.history(garbage)), 422, "number_not_recognized");
+  RestApiTest::expect_problem(drogon::sync_wait(api.simulate_update(drogon::HttpRequest::newHttpRequest())),
+                              401, "unauthorized");
+  RestApiTest::expect_problem(drogon::sync_wait(api.reset_demo(drogon::HttpRequest::newHttpRequest())), 401,
+                              "unauthorized");
+  RestApiTest::expect_problem(drogon::sync_wait(api.history(drogon::HttpRequest::newHttpRequest())), 401,
+                              "unauthorized");
+}
+
 TEST(RestApiDevAuth, DevUserOnlyWithoutToken) {
   FakeDomainService domain{fake::FakeSnapshot::three_records(), fake::FakeSnapshot::three_records(),
                            year{2026} / month{9} / day{26}};

@@ -1,22 +1,31 @@
 /// @file main.cpp
-/// @brief Точка входа `ingest`. `--demo` — этап 1; `--once` и `--daemon` — после подтверждения источника /
-/// этап 2.
+/// @brief Точка входа `ingest`: `--demo` (пара N/N+1), `--daemon` (ежедневно в 04:00 МСК), `--once`.
+#include <chrono>
+#include <csignal>
 #include <cstdlib>
+#include <ctime>
 #include <exception>
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
-#include "build.hpp"
 #include "cli.hpp"
-#include "demo_source.hpp"
+#include "demo_pair.hpp"
 #include "registry_db.hpp"
+#include "schedule.hpp"
 
 namespace {
 
-/// Версия демо-снапшота N. N+1 (версия 2) — этап 2.
-constexpr std::uint64_t kDemoBaseVersion = 1;
+// Флаг остановки для обработчика сигнала: по стандарту из обработчика допустима только запись
+// volatile std::sig_atomic_t ([support.signal]).
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): состояние обработчика сигнала.
+volatile std::sig_atomic_t g_stop = 0;
+
+extern "C" void on_stop_signal(int /*signal*/) {
+  g_stop = 1;
+}
 
 std::optional<std::string> process_env(std::string_view name) {
   // NOLINTNEXTLINE(concurrency-mt-unsafe): однопоточный процесс, окружение читается при старте.
@@ -30,32 +39,55 @@ int run_demo(const sk::ingest::Options& opts) {
     std::cerr << "ingest --demo: " << db.error().detail << '\n';
     return 1;
   }
-  const auto file = sk::ingest::snapshot_file(opts.snapshot_dir, kDemoBaseVersion);
-  auto source = sk::ingest::DemoTsvSource::open(opts.demo_dir / "base.tsv");
-  if (!source) {
-    std::cerr << "ingest --demo: " << source.error().detail << '\n';
-    return 1;
-  }
-  if (auto r = db.value().mark_building(kDemoBaseVersion, sk::ingest::DemoTsvSource::name(),
-                                        source.value().source_date(), file.string(), true);
-      !r) {
+  const auto r = sk::ingest::run_demo_pair(db.value(), opts.demo_dir, opts.snapshot_dir);
+  if (!r) {
     std::cerr << "ingest --demo: " << r.error().detail << '\n';
     return 1;
   }
-  auto built = sk::ingest::build_snapshot(source.value(), opts.snapshot_dir, kDemoBaseVersion, true);
-  if (!built) {
-    std::cerr << "ingest --demo: сборка не удалась: " << built.error().detail << '\n';
-    (void)db.value().mark_failed(kDemoBaseVersion, built.error().detail);
-    return 1;
+  const auto& p = r.value();
+  std::cout << "ingest --demo: снапшот N v" << sk::ingest::kDemoBaseVersion << " — " << p.base.stats.records
+            << " записей; N+1 v" << sk::ingest::kDemoNextVersion << " — " << p.next.stats.records
+            << " записей; изменений N → N+1: " << p.changes.size() << " (появилось " << p.diff.added
+            << ", исчезло " << p.diff.removed << ", изменилось " << p.diff.changed << "). ТЕСТОВЫЕ ДАННЫЕ\n";
+  return 0;
+}
+
+int run_once() {
+  // Адаптер набора ФСА появится только после подтверждения свежести и формата данных (АРХ §1, главный риск).
+  std::cout << "ingest --once: источник данных ФСА не подтверждён (docs/plan.md), сборка не выполняется\n";
+  return 0;
+}
+
+std::string format_utc(std::chrono::system_clock::time_point t) {
+  const auto secs = std::chrono::floor<std::chrono::seconds>(t);
+  const std::chrono::year_month_day ymd{std::chrono::floor<std::chrono::days>(secs)};
+  const std::chrono::hh_mm_ss hms{secs - std::chrono::floor<std::chrono::days>(secs)};
+  std::string out = std::to_string(static_cast<int>(ymd.year())) + "-";
+  const auto two = [](unsigned v) { return (v < 10 ? "0" : "") + std::to_string(v); };
+  out += two(static_cast<unsigned>(ymd.month())) + "-" + two(static_cast<unsigned>(ymd.day())) + " " +
+         two(static_cast<unsigned>(hms.hours().count())) + ":" +
+         two(static_cast<unsigned>(hms.minutes().count())) + " UTC";
+  return out;
+}
+
+/// Ежедневный запуск `--once` в 04:00 МСК. Сон — шагами по секунде, чтобы `docker stop` (SIGTERM)
+/// завершал процесс сразу, а не по таймауту.
+int run_daemon() {
+  (void)std::signal(SIGTERM, on_stop_signal);
+  (void)std::signal(SIGINT, on_stop_signal);
+  while (g_stop == 0) {
+    const auto next = sk::ingest::next_daily_run(std::chrono::system_clock::now(), sk::ingest::kDailyRunAt,
+                                                 sk::ingest::kMoscowOffset);
+    std::cout << "ingest --daemon: следующий запуск " << format_utc(next) << " (04:00 МСК)\n" << std::flush;
+    while (g_stop == 0 && std::chrono::system_clock::now() < next) {
+      std::this_thread::sleep_for(std::chrono::seconds{1});
+    }
+    if (g_stop != 0) {
+      break;
+    }
+    (void)run_once();
   }
-  if (auto r = db.value().mark_ready(kDemoBaseVersion, built.value()); !r) {
-    std::cerr << "ingest --demo: " << r.error().detail << '\n';
-    return 1;
-  }
-  const auto& b = built.value();
-  std::cout << "ingest --demo: снапшот v" << kDemoBaseVersion << " готов: " << b.file.string() << ", записей "
-            << b.stats.records << ", отвергнуто " << b.rejected << ", дублей " << b.stats.duplicates << ", "
-            << b.stats.bytes << " байт (ТЕСТОВЫЕ ДАННЫЕ)\n";
+  std::cout << "ingest --daemon: остановлен по сигналу\n";
   return 0;
 }
 
@@ -72,12 +104,9 @@ int run(const std::vector<std::string_view>& args) {
     case sk::ingest::Mode::kDemo:
       return run_demo(opts.value());
     case sk::ingest::Mode::kOnce:
-      std::cout
-          << "ingest --once: источник данных ФСА не подтверждён (docs/plan.md), сборка не выполняется\n";
-      return 0;
+      return run_once();
     case sk::ingest::Mode::kDaemon:
-      std::cout << "ingest --daemon: планировщик — этап 2\n";
-      return 0;
+      return run_daemon();
   }
   return 0;
 }

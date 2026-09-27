@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
 import type { SertkontrolApi } from '../api/sertkontrol';
-import type { CheckedVerdict, DataStatus, PortfolioPage } from '../api/types';
+import type { CheckedVerdict, DataStatus, DocumentHistory, PortfolioPage } from '../api/types';
 
 export const verdict: CheckedVerdict = {
   check_id: 1,
@@ -57,7 +57,22 @@ export const dataStatus: DataStatus = {
   source_date: '2026-09-25',
   record_count: 16,
   is_demo: true,
+  demo_stage: 'base',
+  demo_update_available: true,
   next_update: null,
+};
+
+export const history: DocumentHistory = {
+  doc_key: 'RUD-CR.PA08.B.89369/26',
+  display_number: 'RU Д-CR.PA08.B.89369/26',
+  entries: [
+    {
+      version: 2,
+      data_date: '2026-09-26',
+      before: { status: 'active', status_name: 'действует', expiry_date: '2031-02-09', status_date: '2026-02-10' },
+      after: { status: 'suspended', status_name: 'приостановлен', expiry_date: '2031-02-09', status_date: '2026-09-26' },
+    },
+  ],
 };
 
 /** API с успешными ответами по умолчанию; отдельные методы переопределяются в тесте. */
@@ -72,6 +87,9 @@ export function fakeApi(overrides: Partial<SertkontrolApi> = {}): SertkontrolApi
     addToPortfolio: vi.fn(() => Promise.resolve({ item: page.items[0] ?? ({} as never), verdict })),
     removeFromPortfolio: vi.fn(() => Promise.resolve()),
     dataStatus: vi.fn(() => Promise.resolve(dataStatus)),
+    history: vi.fn(() => Promise.resolve(history)),
+    simulateUpdate: vi.fn(() => Promise.resolve({ notified: 1 })),
+    resetDemo: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
 }

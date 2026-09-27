@@ -3,9 +3,16 @@
 #include <drogon/orm/Exception.h>
 
 #include <algorithm>
+#include <charconv>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include <json/reader.h>
+#include <json/value.h>
+#include <json/writer.h>
+
+#include "sertkontrol/snapshot/lookup.hpp"
 #include "sertkontrol/verify/inn.hpp"
 
 namespace sk::certd {
@@ -64,14 +71,65 @@ PortfolioItem item_from_row(const drogon::orm::Row& r) {
   return item;
 }
 
+/// `YYYY-MM-DD` → дата; иначе `nullopt`.
+std::optional<Date> parse_iso(std::string_view s) {
+  if (s.size() != 10 || s[4] != '-' || s[7] != '-') {
+    return std::nullopt;
+  }
+  int y = 0;
+  unsigned m = 0;
+  unsigned d = 0;
+  const auto num = [](std::string_view part, auto& out) {
+    const auto [ptr, ec] = std::from_chars(part.data(), part.data() + part.size(), out);
+    return ec == std::errc{} && ptr == part.data() + part.size();
+  };
+  if (!num(s.substr(0, 4), y) || !num(s.substr(5, 2), m) || !num(s.substr(8, 2), d)) {
+    return std::nullopt;
+  }
+  const std::chrono::year_month_day ymd{std::chrono::year{y}, std::chrono::month{m}, std::chrono::day{d}};
+  if (!ymd.ok()) {
+    return std::nullopt;
+  }
+  return Date{ymd};
+}
+
+/// `registry_change.before/after` (C8): `{"status", "expiry_date", "status_date"}` или SQL NULL.
+std::optional<DocStateView> parse_state(const drogon::orm::Field& f) {
+  if (f.isNull()) {
+    return std::nullopt;
+  }
+  const auto text = f.as<std::string>();
+  Json::Value v;
+  std::string errors;
+  const std::unique_ptr<Json::CharReader> reader{Json::CharReaderBuilder{}.newCharReader()};
+  if (!reader->parse(text.data(), text.data() + text.size(), &v, &errors) || !v.isObject()) {
+    return std::nullopt;
+  }
+  DocStateView out;
+  out.status = snapshot::status_from_string(v["status"].asString()).value_or(snapshot::Status::kUnknown);
+  if (v["expiry_date"].isString()) {
+    out.expiry_date = parse_iso(v["expiry_date"].asString());
+  }
+  if (v["status_date"].isString()) {
+    out.status_date = parse_iso(v["status_date"].asString());
+  }
+  return out;
+}
+
+Error forbidden_not_demo() {
+  return Error{ErrorCode::kForbidden, "демо-сценарий доступен только в демо-режиме"};
+}
+
 }  // namespace
 
-DomainServiceImpl::DomainServiceImpl(drogon::orm::DbClientPtr db, const snapshot::SnapshotHolder& holder,
-                                     RecognitionPool& recognition, RateLimiter& limiter, TodayFn today)
+DomainServiceImpl::DomainServiceImpl(drogon::orm::DbClientPtr db, const SnapshotSet& snapshots,
+                                     RecognitionPool& recognition, RateLimiter& limiter,
+                                     NotifyService& notify, TodayFn today)
     : db_(std::move(db)),
-      holder_(holder),
+      snapshots_(snapshots),
       recognition_(recognition),
       limiter_(limiter),
+      notify_(notify),
       today_(std::move(today)) {
 }
 
@@ -127,14 +185,14 @@ drogon::Task<Result<Ok>> DomainServiceImpl::give_consent(UserContext user) {
 drogon::Task<Result<CheckResult>> DomainServiceImpl::check_numbers(
     UserContext user, std::vector<std::string> raws, std::chrono::steady_clock::time_point started,
     bool from_file) {
-  // Снапшот берётся один раз на запрос и держится до конца (АРХ §7.4).
-  const auto snap = holder_.get();
-  if (!snap) {
-    co_return no_snapshot();
-  }
   const auto u = co_await ensure_user(user.max_user_id);
   if (!u) {
     co_return u.error();
+  }
+  // Снапшот пользователя берётся один раз на запрос и держится до конца (АРХ §7.4).
+  const auto snap = snapshot_of(u.value());
+  if (!snap) {
+    co_return no_snapshot();
   }
   const auto today = today_();
   CheckResult out;
@@ -243,8 +301,9 @@ drogon::Task<Result<Page<PortfolioItem>>> DomainServiceImpl::list_portfolio(User
   }
 }
 
-drogon::Task<Result<AddResult>> DomainServiceImpl::add_for_user(std::int64_t user_id, AddRequest request) {
-  const auto snap = holder_.get();
+drogon::Task<Result<AddResult>> DomainServiceImpl::add_for_user(UserRow user, AddRequest request,
+                                                                bool attach) {
+  const auto snap = snapshot_of(user);
   if (!snap) {
     co_return no_snapshot();
   }
@@ -263,27 +322,36 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_for_user(std::int64_t use
       const auto s = co_await db_->execSqlCoro(
           "INSERT INTO supplier (user_id, inn) VALUES ($1, $2) "
           "ON CONFLICT (user_id, inn) DO UPDATE SET inn = EXCLUDED.inn RETURNING id",
-          user_id, *request.supplier_inn);
+          user.id, *request.supplier_inn);
       supplier_id = s[0]["id"].as<std::int64_t>();
     }
     const auto sku = request.sku.value_or("");
-    const auto r = co_await db_->execSqlCoro(
-        "INSERT INTO portfolio_item (user_id, doc_key, doc_kind, sku, supplier_id, last_status, "
-        "last_version) "
-        "VALUES ($1, $2, $3, nullif($4, ''), nullif($5::bigint, 0), $6, $7) "
-        "ON CONFLICT ON CONSTRAINT portfolio_item_uniq DO NOTHING RETURNING id",
-        user_id, verdict.number, kind_name(kind), sku, supplier_id, std::string{snapshot::to_string(status)},
-        static_cast<std::int64_t>(verdict.snapshot_version));
+    // attach: документ уже на контроле — записываем поставщика, статус и версию оставляем как были
+    // (иначе потеряли бы изменение, о котором пользователь ещё не уведомлён).
+    const auto* sql =
+        attach ? "INSERT INTO portfolio_item (user_id, doc_key, doc_kind, sku, supplier_id, last_status, "
+                 "last_version) VALUES ($1, $2, $3, nullif($4, ''), nullif($5::bigint, 0), $6, $7) "
+                 "ON CONFLICT ON CONSTRAINT portfolio_item_uniq DO UPDATE SET supplier_id = "
+                 "EXCLUDED.supplier_id RETURNING id, last_status, last_version"
+               : "INSERT INTO portfolio_item (user_id, doc_key, doc_kind, sku, supplier_id, last_status, "
+                 "last_version) VALUES ($1, $2, $3, nullif($4, ''), nullif($5::bigint, 0), $6, $7) "
+                 "ON CONFLICT ON CONSTRAINT portfolio_item_uniq DO NOTHING "
+                 "RETURNING id, last_status, last_version";
+    const auto r = co_await db_->execSqlCoro(sql, user.id, verdict.number, kind_name(kind), sku, supplier_id,
+                                             std::string{snapshot::to_string(status)},
+                                             static_cast<std::int64_t>(verdict.snapshot_version));
     if (r.empty()) {
       co_return Error{ErrorCode::kConflict, "документ с этим SKU уже на контроле"};
     }
-    PortfolioItem item{.id = r[0]["id"].as<std::int64_t>(),
-                       .doc_key = verdict.number,
-                       .doc_kind = kind,
-                       .sku = sku.empty() ? std::nullopt : std::optional<std::string>{sku},
-                       .supplier_inn = supplier_id == 0 ? std::nullopt : request.supplier_inn,
-                       .last_status = status,
-                       .last_version = verdict.snapshot_version};
+    PortfolioItem item{
+        .id = r[0]["id"].as<std::int64_t>(),
+        .doc_key = verdict.number,
+        .doc_kind = kind,
+        .sku = sku.empty() ? std::nullopt : std::optional<std::string>{sku},
+        .supplier_inn = supplier_id == 0 ? std::nullopt : request.supplier_inn,
+        .last_status = snapshot::status_from_string(r[0]["last_status"].as<std::string>())
+                           .value_or(snapshot::Status::kUnknown),
+        .last_version = r[0]["last_version"].isNull() ? 0 : r[0]["last_version"].as<std::uint64_t>()};
     co_return AddResult{.item = std::move(item), .verdict = std::move(verdict)};
   } catch (const DrogonDbException& e) {
     co_return db_error(e);
@@ -295,7 +363,7 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_to_portfolio(UserContext 
   if (!u) {
     co_return u.error();
   }
-  co_return co_await add_for_user(u.value().id, std::move(request));
+  co_return co_await add_for_user(u.value(), std::move(request), false);
 }
 
 drogon::Task<Result<AddResult>> DomainServiceImpl::add_checked(UserContext user, std::int64_t check_id) {
@@ -316,7 +384,32 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_checked(UserContext user,
   } catch (const DrogonDbException& e) {
     co_return db_error(e);
   }
-  co_return co_await add_for_user(u.value().id, AddRequest{.number = std::move(doc_key)});
+  co_return co_await add_for_user(u.value(), AddRequest{.number = std::move(doc_key)}, false);
+}
+
+drogon::Task<Result<AddResult>> DomainServiceImpl::attach_supplier(UserContext user, std::int64_t check_id,
+                                                                   std::string supplier_inn) {
+  if (!verify::inn_valid(supplier_inn)) {
+    co_return Error{ErrorCode::kInvalidArgument, "ИНН поставщика: неверный формат или контрольная цифра"};
+  }
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  std::string doc_key;
+  try {
+    const auto r = co_await db_->execSqlCoro(
+        "SELECT doc_key FROM check_log WHERE id = $1 AND user_id = $2 AND doc_key IS NOT NULL", check_id,
+        u.value().id);
+    if (r.empty()) {
+      co_return Error{ErrorCode::kNotFound, "проверка не найдена"};
+    }
+    doc_key = r[0]["doc_key"].as<std::string>();
+  } catch (const DrogonDbException& e) {
+    co_return db_error(e);
+  }
+  co_return co_await add_for_user(
+      u.value(), AddRequest{.number = std::move(doc_key), .supplier_inn = std::move(supplier_inn)}, true);
 }
 
 drogon::Task<Result<BatchAddResult>> DomainServiceImpl::add_batch(UserContext user, std::int64_t batch_id) {
@@ -340,7 +433,7 @@ drogon::Task<Result<BatchAddResult>> DomainServiceImpl::add_batch(UserContext us
   }
   BatchAddResult out;
   for (auto& key : keys) {
-    const auto r = co_await add_for_user(u.value().id, AddRequest{.number = std::move(key)});
+    const auto r = co_await add_for_user(u.value(), AddRequest{.number = std::move(key)}, false);
     if (r) {
       ++out.added;
     } else if (r.error().code == ErrorCode::kConflict) {
@@ -369,25 +462,141 @@ drogon::Task<Result<Ok>> DomainServiceImpl::remove_from_portfolio(UserContext us
   }
 }
 
-drogon::Task<Result<DataStatus>> DomainServiceImpl::data_status(UserContext /*user*/) {
-  const auto snap = holder_.get();
+drogon::Task<Result<DataStatus>> DomainServiceImpl::data_status(UserContext user) {
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  const auto snap = snapshot_of(u.value());
   if (!snap) {
     co_return no_snapshot();
   }
   const auto& meta = snap->meta();
-  co_return DataStatus{.version = meta.version,
-                       .source = meta.source,
-                       .source_date = meta.source_date,
-                       .record_count = snap->size(),
-                       .is_demo = meta.is_demo};
+  co_return DataStatus{
+      .version = meta.version,
+      .source = meta.source,
+      .source_date = meta.source_date,
+      .record_count = snap->size(),
+      .is_demo = meta.is_demo,
+      .demo_stage = u.value().stage,
+      .demo_update_available = u.value().is_demo && snapshots_.get(SnapshotRole::kDemoUpdated) != nullptr};
 }
 
-drogon::Task<Result<Ok>> DomainServiceImpl::simulate_update(UserContext /*user*/) {
-  co_return Error{ErrorCode::kForbidden, "демо-обновление будет доступно на этапе 2"};
+drogon::Task<Result<DocumentHistory>> DomainServiceImpl::history(UserContext user, std::string number) {
+  const auto canonical = canon::canonicalize(number);
+  if (!canonical) {
+    co_return Error{ErrorCode::kNumberNotRecognized, "не удалось распознать номер документа"};
+  }
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  const auto snap = snapshot_of(u.value());
+  if (!snap) {
+    co_return no_snapshot();
+  }
+  DocumentHistory out{.doc_key = *canonical};
+  // Видимые пользователю версии: боевые — все не новее загруженной; демо — только изменения N → N+1 и только
+  // на стадии N+1 (на стадии N обновление ещё «не наступило»).
+  const bool demo = u.value().is_demo;
+  if (demo && u.value().stage != DemoStage::kUpdated) {
+    co_return out;
+  }
+  const auto visible = static_cast<std::int64_t>(snap->meta().version);
+  try {
+    const auto r = co_await db_->execSqlCoro(
+        "SELECT c.version, v.source_date::text AS source_date, c.before::text AS before, c.after::text AS "
+        "after "
+        "FROM registry_change c JOIN snapshot_version v ON v.version = c.version "
+        "WHERE c.doc_key = $1 AND v.status = 'ready' AND v.is_demo = $2::boolean "
+        "AND (($2::boolean AND c.version = $3::bigint) OR (NOT $2::boolean AND c.version <= $3::bigint)) "
+        "ORDER BY c.version DESC LIMIT 100",
+        *canonical, demo, visible);
+    for (const auto& row : r) {
+      out.entries.push_back(
+          HistoryEntry{.version = row["version"].as<std::uint64_t>(),
+                       .data_date = parse_iso(row["source_date"].as<std::string>()).value_or(Date{}),
+                       .before = parse_state(row["before"]),
+                       .after = parse_state(row["after"])});
+    }
+  } catch (const DrogonDbException& e) {
+    co_return db_error(e);
+  }
+  co_return out;
 }
 
-drogon::Task<Result<Ok>> DomainServiceImpl::reset_demo(UserContext /*user*/) {
-  co_return Error{ErrorCode::kForbidden, "демо-обновление будет доступно на этапе 2"};
+drogon::Task<Result<DemoUpdate>> DomainServiceImpl::simulate_update(UserContext user) {
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  if (!u.value().is_demo) {
+    co_return forbidden_not_demo();
+  }
+  auto next = snapshots_.get(SnapshotRole::kDemoUpdated);
+  if (!next) {
+    co_return Error{ErrorCode::kSnapshotUnavailable,
+                    "демо-снапшот N+1 ещё не загружен, повторите через минуту"};
+  }
+  try {
+    co_await db_->execSqlCoro("UPDATE app_user SET demo_stage = 1 WHERE id = $1", u.value().id);
+  } catch (const DrogonDbException& e) {
+    co_return db_error(e);
+  }
+  // Портфель пользователя против N+1 — тот же алгоритм и та же идемпотентность, что у боевой версии (F5).
+  const auto stats = co_await notify_.notify_user(std::move(next), u.value().id);
+  if (!stats) {
+    co_return stats.error();
+  }
+  co_return DemoUpdate{.notified = stats.value().notified};
+}
+
+drogon::Task<Result<Ok>> DomainServiceImpl::reset_demo(UserContext user) {
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  if (!u.value().is_demo) {
+    co_return forbidden_not_demo();
+  }
+  const auto base = snapshots_.get(SnapshotRole::kDemoBase);
+  if (!base) {
+    co_return no_snapshot();
+  }
+  const auto updated = snapshots_.get(SnapshotRole::kDemoUpdated);
+  const auto updated_version = updated ? static_cast<std::int64_t>(updated->meta().version) : 0;
+  try {
+    // Статусы портфеля — как если бы всё поставили на контроль на стадии N.
+    const auto r =
+        co_await db_->execSqlCoro("SELECT id, doc_key FROM portfolio_item WHERE user_id = $1", u.value().id);
+    Json::Value items{Json::arrayValue};
+    for (const auto& row : r) {
+      const auto key = row["doc_key"].as<std::string>();
+      auto status = snapshot::Status::kUnknown;
+      if (const auto idx = snapshot::find_index(*base, key)) {
+        status = base->record(*idx).status;
+      }
+      Json::Value item{Json::objectValue};
+      item["id"] = static_cast<Json::Int64>(row["id"].as<std::int64_t>());
+      item["status"] = std::string{snapshot::to_string(status)};
+      items.append(item);
+    }
+    Json::StreamWriterBuilder b;
+    b["indentation"] = "";
+    // Одна инструкция: статусы, удаление уведомлений о N+1 и стадия меняются вместе.
+    co_await db_->execSqlCoro(
+        "WITH x AS (SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(id bigint, status text)), "
+        "upd AS (UPDATE portfolio_item p SET last_status = x.status, last_version = $3::bigint FROM x "
+        "  WHERE p.id = x.id AND p.user_id = $1 RETURNING p.id), "
+        "del AS (DELETE FROM notification n USING portfolio_item p "
+        "  WHERE n.portfolio_item_id = p.id AND p.user_id = $1 AND n.version = $4::bigint RETURNING n.id) "
+        "UPDATE app_user SET demo_stage = 0 WHERE id = $1",
+        u.value().id, Json::writeString(b, items), static_cast<std::int64_t>(base->meta().version),
+        updated_version);
+    co_return Ok{};
+  } catch (const DrogonDbException& e) {
+    co_return db_error(e);
+  }
 }
 
 }  // namespace sk::certd

@@ -31,6 +31,14 @@ describe('App', () => {
     }
   });
 
+  it('«Открыть» в портфеле ведёт на экран «Документ» с номером', async () => {
+    renderApp();
+    await userEvent.click(await screen.findByRole('button', { name: /Открыть RU Д-CR/ }));
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Документ');
+    expect(screen.getByLabelText('Номер документа')).toHaveValue('RU Д-CR.PA08.B.89369/26');
+    expect(await screen.findByText(/действует → приостановлен/)).toBeInTheDocument();
+  });
+
   it('без провайдера API — понятная ошибка', () => {
     expect(() => render(<App />)).toThrow('ApiContext.Provider');
   });

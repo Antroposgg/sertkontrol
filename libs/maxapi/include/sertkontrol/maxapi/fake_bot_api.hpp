@@ -24,7 +24,7 @@ class RecordingBotApi final : public BotApi {
     const std::scoped_lock lock(mutex_);
     if (fail_next_) {
       fail_next_ = false;
-      co_return Error{ErrorCode::kInternal, "тестовый отказ"};
+      co_return Error{fail_code_, "тестовый отказ"};
     }
     if (auto v = validate(msg); !v) {
       co_return v.error();
@@ -55,9 +55,11 @@ class RecordingBotApi final : public BotApi {
     const std::scoped_lock lock(mutex_);
     files_[std::move(url)] = std::move(bytes);
   }
-  void fail_next_send() {
+  /// Следующая отправка вернёт ошибку `code` (`kInternal` — как 5xx, `kRateLimited` — как 429).
+  void fail_next_send(ErrorCode code = ErrorCode::kInternal) {
     const std::scoped_lock lock(mutex_);
     fail_next_ = true;
+    fail_code_ = code;
   }
   [[nodiscard]] std::vector<OutgoingMessage> messages() const {
     const std::scoped_lock lock(mutex_);
@@ -74,6 +76,7 @@ class RecordingBotApi final : public BotApi {
   std::vector<Answer> answers_;
   std::map<std::string, std::vector<std::byte>> files_;
   bool fail_next_{false};
+  ErrorCode fail_code_{ErrorCode::kInternal};
 };
 
 }  // namespace sk::maxapi
