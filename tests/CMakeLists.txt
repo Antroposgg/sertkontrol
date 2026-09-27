@@ -28,6 +28,7 @@ target_compile_definitions(canon_test PRIVATE SK_CANON_GOLDEN="${CMAKE_CURRENT_S
 
 sk_add_test(snapshot_test
   snapshot/snapshot_test.cpp
+  snapshot/diff_test.cpp
   LIBS sk::snapshot sk::fakes)
 target_include_directories(snapshot_test PRIVATE ${XXHASH_INCLUDE_DIR})
 target_link_libraries(snapshot_test PRIVATE ${XXHASH_LIBRARY})
