@@ -112,7 +112,8 @@ Result<Config> load_config(const EnvLookup& env) {
     return dev.error();
   }
   // ADR-0013: вход без initData возможен только там, где подпись проверить нечем. С токеном бота
-  // dev-пользователь игнорируется (main.cpp предупреждает в логе), чтобы один compose.yaml годился и локально, и на VPS.
+  // dev-пользователь игнорируется (main.cpp предупреждает в логе), чтобы один compose.yaml годился и
+  // локально, и на VPS.
   cfg.dev_user_id_ignored = dev.value() != 0 && cfg.bot_enabled();
   if (dev.value() != 0 && !cfg.bot_enabled()) {
     cfg.dev_user_id = static_cast<std::int64_t>(dev.value());

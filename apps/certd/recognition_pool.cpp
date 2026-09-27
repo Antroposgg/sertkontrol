@@ -23,7 +23,8 @@ drogon::Task<Result<std::vector<recog::Found>>> RecognitionPool::recognize(std::
     co_return Error{ErrorCode::kRateLimited, "очередь распознавания заполнена, попробуйте через минуту"};
   }
   auto* loop = pool_.getNextLoop();
-  // std::function, а не лямбда в кадре корутины: тип лямбды без связывания ломает unity-сборку (-Wsubobject-linkage).
+  // std::function, а не лямбда в кадре корутины: тип лямбды без связывания ломает unity-сборку
+  // (-Wsubobject-linkage).
   std::function<Result<std::vector<recog::Found>>()> task = [this, &bytes, type] {
     return recognizer_(bytes, type, recog::Limits{});
   };

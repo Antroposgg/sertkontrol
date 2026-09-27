@@ -82,7 +82,8 @@ Result<Ok> validate(const OutgoingMessage& msg) {
   }
   const auto len = utf8_length(msg.text);
   if (len == 0 || len > kMaxTextLength) {
-    return invalid_message("длина текста " + std::to_string(len) + " вне 1.." + std::to_string(kMaxTextLength));
+    return invalid_message("длина текста " + std::to_string(len) + " вне 1.." +
+                           std::to_string(kMaxTextLength));
   }
   if (msg.buttons.size() > kMaxRows) {
     return invalid_message("больше " + std::to_string(kMaxRows) + " рядов кнопок");

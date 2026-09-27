@@ -91,7 +91,7 @@ TEST(Config, MaxSettings) {
   EXPECT_EQ(on.value().max_bot_username, "sertkontrol_bot");
   EXPECT_EQ(on.value().recog_threads, 4U);
 
-  EXPECT_FALSE(load_config(env_of({{"MAX_BOT_TOKEN", "t"}})));  // без секрета
+  EXPECT_FALSE(load_config(env_of({{"MAX_BOT_TOKEN", "t"}})));         // без секрета
   EXPECT_FALSE(load_config(env_of({{"MAX_WEBHOOK_SECRET", "abc"}})));  // короче 5
   EXPECT_FALSE(load_config(env_of({{"MAX_WEBHOOK_SECRET", "bad secret!"}})));
   EXPECT_FALSE(load_config(env_of({{"CERTD_RECOG_QUEUE", "0"}})));
