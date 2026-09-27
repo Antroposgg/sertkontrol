@@ -3,7 +3,7 @@
 Сертконтроль — бот и мини-приложение MAX для проверки и мониторинга сертификатов и деклараций о соответствии.
 Модульный монолит на C++20 (`certd` + `ingest`), PostgreSQL 16, мини-приложение на React + TS.
 
-**Текущий этап: 0 — каркас (завершён, ожидает команды на этап 1).** План и статус — [`docs/plan.md`](docs/plan.md).
+**Текущий этап: 1 — проверка документа на демо-снапшоте (F1 точный поиск, F2, F3, F4).** План и статус — [`docs/plan.md`](docs/plan.md).
 
 Источники истины (читать перед любой работой):
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — АРХ: стек, структура, контракты C1–C9, алгоритмы, CI;
@@ -17,17 +17,17 @@
 | Модуль | Роль | Назначение | Статус | README |
 |---|---|---|---|---|
 | `libs/contracts` | все | Контракты C1, C2, C4, C5 + fake | этап 0 ✔ | [→](libs/contracts/README.md) |
-| `libs/canon` | R2 | Канонизация и грамматика номера (C1) | этап 1 | [→](libs/canon/README.md) |
-| `libs/snapshot` | R1 | Формат, writer, reader, diff (C2) | этап 1–2 | [→](libs/snapshot/README.md) |
-| `libs/verify` | R2 | Поиск, правила вердикта (C4) | этап 1, 3 | [→](libs/verify/README.md) |
-| `libs/recog` | R3 | PDF, QR, OCR (C5) | этап 1, 4 | [→](libs/recog/README.md) |
-| `libs/maxapi` | R4 | Bot API MAX, outbox-отправитель, initData | этап 1–2 | [→](libs/maxapi/README.md) |
-| `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 0 (CLI) | [→](apps/ingest/README.md) |
-| `apps/certd` | R3 | Домен (C6), REST, задачи, `/healthz`, статика | этап 0 (health) | [→](apps/certd/README.md) |
-| `apps/certd/bot` | R4 | Диалоги бота | этап 1 | [→](apps/certd/bot/README.md) |
-| `web/` | R4 | Мини-приложение | этап 0 (каркас) | [→](web/README.md) |
-| `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 0 ✔ | [→](db/README.md) |
-| `data/demo/` | R1 | Демо-источники N и N+1 | этап 1 | [→](data/demo/README.md) |
+| `libs/canon` | R2 | Канонизация и грамматика номера (C1) | этап 1 ✔ | [→](libs/canon/README.md) |
+| `libs/snapshot` | R1 | Формат, writer, reader, diff (C2) | этап 1 ✔ (diff — 2) | [→](libs/snapshot/README.md) |
+| `libs/verify` | R2 | Поиск, правила вердикта, ИНН (C4) | этап 1 ✔ (нечёткий — 3) | [→](libs/verify/README.md) |
+| `libs/recog` | R3 | PDF, QR, OCR (C5) | этап 1 ✔ (OCR — 4) | [→](libs/recog/README.md) |
+| `libs/maxapi` | R4 | Bot API MAX, initData, события, C9 | этап 1 ✔ (лимитер — 2) | [→](libs/maxapi/README.md) |
+| `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 1 ✔ (`--demo`) | [→](apps/ingest/README.md) |
+| `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `/healthz`, статика | этап 1 ✔ | [→](apps/certd/README.md) |
+| `apps/certd/bot` | R4 | Диалоги бота | этап 1 ✔ | [→](apps/certd/bot/README.md) |
+| `web/` | R4 | Мини-приложение | этап 1 ✔ (Портфель, Добавить, Данные) | [→](web/README.md) |
+| `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 1 ✔ | [→](db/README.md) |
+| `data/demo/` | R1 | Демо-источники N и N+1 | этап 1 ✔ (N) | [→](data/demo/README.md) |
 | `tests/`, `fuzz/`, `bench/` | все | Тесты, fuzz (этап 3), бенчмарки (этап 3) | — | [→](tests/README.md) |
 
 Роли (АРХ §1): R1 «Данные реестра», R2 «Поиск и вердикт», R3 «Backend и распознавание», R4 «MAX и продукт».
@@ -51,11 +51,13 @@ flowchart TB
 ```
 
 Все C++-модули дополнительно используют `libs/contracts` — лист графа, только стандартная библиотека.
+`libs/maxapi` — транспорт MAX: не знает о снапшоте, вердикте и домене.
 
 Запреты (проверяются `scripts/ci/deps-check.sh` в CI):
 - `libs/contracts` — только стандартная библиотека;
 - `libs/{canon,snapshot,verify,recog}` не включают Drogon и ничего из `apps/`;
 - `canon` не знает о `snapshot`/`verify`; `snapshot` — о `verify`/`recog`; `verify` — о `recog`/`maxapi`;
+- `libs/maxapi` не включает `snapshot/`, `verify/`, `recog/` и домен certd;
 - `apps/ingest` не зависит от `apps/certd`;
 - `apps/certd/bot` трогает домен только через `DomainService` (C6);
 - `web/` не импортирует ничего вне `web/src` и `package.json`.
@@ -69,13 +71,14 @@ Node.js 24 — через nvm). Без установленных пакетов
 
 | Что | Команда |
 |---|---|
-| Сборка + тесты GCC 13 Release (тесты ×2) | `scripts/ci/cpp-build-test.sh gcc-release` |
+| Сборка + тесты GCC 13 Release, unity как в Docker (тесты ×2, с временным PostgreSQL) | `scripts/ci/cpp-build-test.sh gcc-release` |
 | Сборка + тесты clang 18 ASan/UBSan | `scripts/ci/cpp-build-test.sh clang-asan` |
 | Покрытие C++ (gcovr, ≥ 70% строк libs/ + apps/) | `scripts/ci/cpp-coverage.sh` → `build/coverage/report/index.html` |
 | clang-format (проверка / исправление) | `scripts/ci/cpp-format-check.sh [--fix]` |
 | clang-tidy | `scripts/ci/cpp-tidy.sh` |
 | Запреты импорта | `scripts/ci/deps-check.sh` |
 | Миграции на чистом PG 16 | `scripts/ci/db-migrations.sh` |
+| Любая команда с временным PostgreSQL 16 (`SK_TEST_PG`) | `scripts/ci/with-pg.sh <команда>` |
 | Web: lint, tsc, тесты ≥ 70% (×2), build | `scripts/ci/web.sh` (без Node: `docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src node:24-slim scripts/ci/web.sh`) |
 | `docker build --no-cache` с таймером ≤ 240 с | `scripts/ci/docker-build.sh` |
 | Стек одной командой + `/healthz` | `scripts/ci/compose-smoke.sh` |
@@ -129,6 +132,9 @@ C6 — `apps/certd/domain.hpp`; C7 — `openapi.yaml` (этап 1); C8, C9 — `
   (найдено тестом `BotTest.WatchAndUnwatch` — `r.value()` вызывался при ошибке). Вычислите значение отдельным
   оператором до `co_await`.
 - Поля агрегатов — с инициализатором по умолчанию (`{}`).
+- Вспомогательные функции в анонимном пространстве имён — с уникальными в пределах цели именами: образ собирается
+  unity-сборкой (пресет `gcc-release` делает так же). Тестовые цели собираются без unity.
+- SQL — только параметры `$n`; в выражениях с литералами — явное приведение (`$1::bigint`, `$2::text`).
 - Публичный API — doxygen (`///`) в C++, JSDoc (`/** */`) в TS. Комментарии объясняют «почему» со ссылкой на АРХ §… или ADR.
 - TS: `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes`; ESLint `strictTypeChecked`, 0 предупреждений.
 
