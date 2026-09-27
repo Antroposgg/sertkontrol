@@ -7,7 +7,7 @@
 
 Работа идёт этапами 0–4. Этап начинается только по команде, заканчивается ворота-проверкой (см. [`CLAUDE.md`](../CLAUDE.md#ворота-проверка)).
 
-**Текущий этап: 1 — проверка документа на демо-снапшоте.** Этап 0 завершён 2026-09-26.
+**Текущий этап: 1 — завершён 2026-09-27 (ворота зелёные). Следующий — 2, по команде.**
 
 ---
 
@@ -104,7 +104,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | Этап | Суть | Статус |
 |---|---|---|
 | 0 | Каркас | ✔ завершён, ворота зелёные |
-| 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | реализован, ворота — ниже |
+| 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | ✔ завершён 2026-09-27, ворота зелёные |
 | 2 | Обновление и уведомления (F5, F6) | ожидает команды |
 | 3 | Нечёткий поиск и надёжность | ожидает команды |
 | 4 | Should: F7–F10 | по отдельной команде |
@@ -179,3 +179,29 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | Кнопка «Указать поставщика» в боте отсутствует (ИНН поставщика — в мини-приложении) | `apps/certd/bot` | Диалог ввода ИНН | 2 |
 | Экран «Документ» отсутствует; «Данные» — без демо-кнопки | `web/` | Карточка с историей, «Симулировать обновление» | 2 |
 | Пагинация портфеля в интерфейсе («Показать ещё») | `web/src/screens/Portfolio.tsx` | Кнопка по `next_cursor` | 2 |
+
+### 5.5. Результат ворот этапа 1 (чистый клон, те же скрипты, что в CI)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 (unity) и clang 18 с `-Werror`, clang-tidy, clang-format, eslint, tsc strict | 0 ошибок, 0 предупреждений |
+| 2 | Тесты ×2, ASan/UBSan | C++ 173/173 (каждый дважды, с PostgreSQL 16); web 41/41 (дважды); санитайзеры без находок |
+| 3 | Покрытие | C++ 91,2% строк (2547/2792); web 99,45% строк |
+| 4 | Шаги CI локально | все зелёные |
+| 5 | `docker build --no-cache` / compose | 93 с; `/healthz` → 200 со снапшотом v1, `/api/v1/check` → вердикт `ok` по демо-данным |
+| 6 | Критерии F этапа | таблица 5.6 |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонения — ADR 0012, 0013 |
+| 8 | Документация | README модулей, CLAUDE.md, этот план, `openapi.yaml`, `docs/rules.md`, `docs/snapshot-format.md` |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ в `git log` нет |
+
+### 5.6. F-требования этапа 1 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F1 (точный) | Номер в любой раскладке, до 20 в сообщении; ответ ≤ 1 с | `libs/canon`, `libs/verify/src/verify.cpp`, `DomainServiceImpl::check_text` | `CanonGolden.*`, `FindNumbers.*`, `RulesTest.Table`, `DomainPgTest.CheckTextLogsEveryNumber`, `BotTest.ManyNumbersGiveSummaryAndWatchAll` |
+| F2 | Выписка 89369/26 → верный номер и ссылка на реестр | `libs/recog`, `DomainServiceImpl::check_file`, `Bot::on_message` | `Recognize.ExtractGivesNumberAndRegistryLink` (34 мс), `DomainPgTest.CheckFileUsesQrLink`, `BotTest.PdfAttachmentFlow`, `RestApiTest.CheckFile` |
+| F3 | Все поля и метки факт / расчёт / рекомендация; «нет в данных на <дату>» и ближайшие номера | `libs/verify`, `bot/card.cpp`, `web/src/components/VerdictCard.tsx` | `RulesTest.*`, `BotTest.TextGivesVerdictCard`, `BotTest.ProblemCardHasCalculationAndRecommendation`, web `Add.test.tsx` |
+| F4 | Портфель: на контроль, список с фильтрами, удалить — из бота и мини-приложения | `DomainServiceImpl`, `rest_api.cpp`, `bot/bot.cpp`, `web/src/screens/Portfolio.tsx` | `DomainPgTest.PortfolioLifecycle`, `DomainPgTest.IdorForeignIdIsNotFound`, `RestApiTest.PortfolioLifecycleAndFilters`, `BotTest.WatchAndUnwatch`, web `Portfolio.test.tsx` |
+
+Время ответа F1: вердикт по снапшоту — микросекунды, ответ REST в тестах — единицы миллисекунд; p95 на
+настоящем MAX (webhook → отправка) измеряется после подключения бота — пункт ручной проверки.
