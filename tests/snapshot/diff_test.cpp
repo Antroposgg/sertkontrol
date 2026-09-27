@@ -9,7 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "sertkontrol/snapshot/lookup.hpp"
 #include "sertkontrol/snapshot/writer.hpp"
+#include "support/checked.hpp"
 
 namespace sk::snapshot {
 namespace {
@@ -54,6 +56,18 @@ class DiffTest : public ::testing::Test {
   std::uint64_t counter_{0};
 };
 
+// find_index: точное совпадение строки после equal_range по XXH3; чужой или пустой номер — nullopt.
+TEST_F(DiffTest, FindIndexByCanonicalNumber) {
+  const auto snap = open({{.number = "RUD-CR.PA08.B.89369/26", .status = Status::kActive},
+                          {.number = "RUD-RU.PA01.B.10001/25", .status = Status::kTerminated}});
+  const auto idx = find_index(*snap, "RUD-RU.PA01.B.10001/25");
+  ASSERT_TRUE(idx.has_value());
+  EXPECT_EQ(snap->record(idx.value_or(0)).status, Status::kTerminated);
+  EXPECT_FALSE(find_index(*snap, "RUD-RU.PA01.B.10001/2").has_value());
+  EXPECT_FALSE(find_index(*snap, "").has_value());
+  EXPECT_FALSE(find_index(*open({}), "RUD-CR.PA08.B.89369/26").has_value());
+}
+
 TEST_F(DiffTest, EmptySnapshots) {
   const auto a = open({});
   const auto b = open({});
@@ -96,10 +110,11 @@ TEST_F(DiffTest, ClassifiesEveryKindOfChange) {
     by_key[c.doc_key] = c;
   }
   const auto& suspended = by_key.at("RUD-CR.PA08.B.89369/26");
-  EXPECT_EQ(suspended.before->status, Status::kActive);
-  EXPECT_EQ(suspended.after->status, Status::kSuspended);
-  EXPECT_EQ(suspended.after->status_date, (year{2026} / month{9} / day{26}));
-  EXPECT_EQ(by_key.at("RUD-CN.PA01.B.10002/25").after->expiry_date, (year{2031} / month{10} / day{19}));
+  EXPECT_EQ(test::checked(suspended.before).status, Status::kActive);
+  EXPECT_EQ(test::checked(suspended.after).status, Status::kSuspended);
+  EXPECT_EQ(test::checked(suspended.after).status_date, (year{2026} / month{9} / day{26}));
+  EXPECT_EQ(test::checked(by_key.at("RUD-CN.PA01.B.10002/25").after).expiry_date,
+            (year{2031} / month{10} / day{19}));
   EXPECT_FALSE(by_key.at("RUD-CR.PA07.B.89369/26").before.has_value());
   EXPECT_FALSE(by_key.at("RUD-RU.PA04.B.10008/20").after.has_value());
   // Переход статуса учтён только у совпавших ключей.
@@ -121,6 +136,7 @@ TEST_F(DiffTest, EmptySinkCountsOnly) {
 
 /// Property: diff совпадает с наивным сравнением двух `std::map` на случайных парах снапшотов.
 TEST_F(DiffTest, MatchesNaiveMapOnRandomPairs) {
+  // NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp): фиксированное зерно — воспроизводимый property-тест.
   std::mt19937 rng{20260927};
   constexpr int kIterations = 150;
   constexpr int kUniverse = 60;  // номера берутся из общего пула — чтобы были и совпадения, и различия

@@ -14,6 +14,7 @@
 | `src/reader.cpp` | `open_snapshot` (C2) → `MappedSnapshot` |
 | `include/sertkontrol/snapshot/holder.hpp` | `SnapshotHolder` на `std::atomic<std::shared_ptr>` |
 | `include/sertkontrol/snapshot/diff.hpp`, `src/diff.cpp` | `DocState`, `DocChange`, `DiffStats`, `diff` |
+| `include/sertkontrol/snapshot/lookup.hpp` | `find_index(snap, canonical)` — точный поиск записи (XXH3 → `equal_range` → сравнение строки) для потребителей вне `libs/verify` (`certd`: уведомления, сброс демо) |
 
 ## Публичный интерфейс
 C2 (`sk::snapshot::Snapshot`, `open_snapshot`) — в контрактном заголовке; writer, holder и diff — здесь (diff — внутренний интерфейс R1, не контракт). Цель CMake — `sk::snapshot`.
@@ -34,7 +35,7 @@ C2 (`sk::snapshot::Snapshot`, `open_snapshot`) — в контрактном з�
 - Diff опирается на полный порядок writer-а `(key_hash, каноническая строка)` без повторов номера: при равных ключах сравниваются строки, поэтому коллизии XXH3 не склеивают разные документы. Сравниваемое состояние — `(status, expiry_date, status_date)` (АРХ §7.3); записи с различающимися хэшами не распаковываются.
 
 ## Тесты
-`tests/snapshot/` → `snapshot_test`: roundtrip, детерминированность, дубли, обрезка UTF-8, `by_serial`, 13 видов повреждений (включая с верной контрольной суммой), holder под 4 потоками-читателями; `diff_test` — все виды изменений, пустые снапшоты и property-тест против наивного `std::map` на 150 случайных парах.
+`tests/snapshot/` → `snapshot_test`: roundtrip, детерминированность, дубли, обрезка UTF-8, `by_serial`, 13 видов повреждений (включая с верной контрольной суммой), holder под 4 потоками-читателями; `diff_test` — все виды изменений, пустые снапшоты, property-тест против наивного `std::map` на 150 случайных парах, `find_index`.
 
 ## Ограничения и отложенное
 Writer держит данные в памяти (достаточно для демо; потоковая сборка — с адаптером набора ФСА). TSan-тест swap — этап 3.
