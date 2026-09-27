@@ -24,3 +24,14 @@ describe('MAX Bridge', () => {
     expect(getInitData()).toBeUndefined();
   });
 });
+
+describe('openExternal', () => {
+  it('внутри MAX открывает через WebApp.openLink', async () => {
+    const { openExternal } = await import('./bridge');
+    const opened: string[] = [];
+    const win = { WebApp: { openLink: (u: string) => opened.push(u) } } as unknown as Window;
+    expect(openExternal('https://x', win)).toBe(true);
+    expect(opened).toEqual(['https://x']);
+    expect(openExternal('https://x', {} as Window)).toBe(false);
+  });
+});

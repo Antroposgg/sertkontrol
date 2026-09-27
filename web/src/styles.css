@@ -1,0 +1,9 @@
+main { max-width: 640px; margin: 0 auto; padding: 12px; font-family: system-ui, sans-serif; }
+nav { display: flex; gap: 8px; margin: 8px 0; }
+nav button[aria-current='page'] { font-weight: 700; }
+.demo-badge, .demo-note { background: #fff4d6; color: #6b4e00; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+.verdict { border: 1px solid #0001; border-radius: 12px; padding: 12px; margin: 12px 0; }
+.verdict ul { margin: 4px 0 8px; padding-left: 18px; }
+.actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+form { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.file { display: block; margin: 8px 0; }

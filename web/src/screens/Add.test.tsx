@@ -1,0 +1,82 @@
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import { ApiError } from '../api/problem';
+import { fakeApi, verdict } from '../test/fakeApi';
+import { renderWithApi } from '../test/render';
+import { Add } from './Add';
+
+describe('Добавить', () => {
+  it('номер → карточка с метками → на контроль', async () => {
+    const api = fakeApi();
+    renderWithApi(<Add />, api);
+    await userEvent.type(screen.getByLabelText('Номер документа'), ' RU Д-CR.PA08.B.89369/26 ');
+    await userEvent.type(screen.getByLabelText('SKU (необязательно)'), 'SKU-9');
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    expect(api.check).toHaveBeenCalledWith('RU Д-CR.PA08.B.89369/26');
+    const card = await screen.findByRole('article');
+    expect(card).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26');
+    for (const section of ['Факт', 'Расчёт', 'Рекомендация']) {
+      expect(screen.getByRole('region', { name: section })).toBeInTheDocument();
+    }
+    expect(card).toHaveTextContent('Заявитель: ООО «ТЕСТ», ИНН 7700000016');
+    expect(card).toHaveTextContent('Данные реестра на 25.09.2026');
+    expect(card).toHaveTextContent('Тестовые данные');
+    await userEvent.click(screen.getByRole('button', { name: 'На контроль' }));
+    expect(api.addToPortfolio).toHaveBeenCalledWith({ number: 'RUD-CR.PA08.B.89369/26', sku: 'SKU-9' });
+    expect(await screen.findByRole('status')).toHaveTextContent('На контроле');
+    expect(screen.queryByRole('button', { name: 'На контроль' })).not.toBeInTheDocument();
+  });
+
+  it('нет в данных — ближайшие номера, без ссылки на реестр', async () => {
+    const missing = {
+      ...verdict,
+      level: 'not_found' as const,
+      card: null,
+      findings: [{ basis: 'fact' as const, rule: 'not_found', text: 'Номера нет в данных реестра на 25.09.2026' }],
+      suggestions: [{ number: 'RUD-CR.PA09.B.89369/26', display_number: 'RU Д-CR.PA09.B.89369/26', distance: 1 }],
+    };
+    renderWithApi(<Add />, fakeApi({ check: vi.fn(() => Promise.resolve(missing)) }));
+    await userEvent.type(screen.getByLabelText('Номер документа'), 'RU Д-CR.PA07.B.89369/26');
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    const card = await screen.findByRole('article');
+    expect(card).toHaveTextContent('Нет в данных реестра');
+    expect(card).toHaveTextContent('Похожие номера: RU Д-CR.PA09.B.89369/26');
+    expect(screen.queryByText('Открыть в реестре')).not.toBeInTheDocument();
+  });
+
+  it('PDF → карточка; ошибка распознавания и повтор', async () => {
+    const checkFile = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ApiError({ type: 'x', title: 't', status: 422, detail: 'в PDF не найден номер документа', code: 'number_not_recognized' }),
+      )
+      .mockResolvedValue([verdict]);
+    renderWithApi(<Add />, fakeApi({ checkFile }));
+    await userEvent.upload(screen.getByLabelText('PDF-выписка'), new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('в PDF не найден номер документа');
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByRole('article')).toBeInTheDocument();
+    expect(checkFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('пустой результат и ошибка постановки на контроль', async () => {
+    const add = vi.fn(() =>
+      Promise.reject(new ApiError({ type: 'x', title: 'Уже существует', status: 409, detail: 'уже на контроле', code: 'conflict' })),
+    );
+    const api = fakeApi({ checkFile: vi.fn(() => Promise.resolve([])), addToPortfolio: add });
+    renderWithApi(<Add />, api);
+    await userEvent.upload(screen.getByLabelText('PDF-выписка'), new File(['%PDF'], 'a.pdf'));
+    expect(await screen.findByText('В файле не найдено номеров.')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Номер документа'), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'На контроль' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('уже на контроле');
+  });
+
+  it('кнопка «Проверить» неактивна без номера', () => {
+    renderWithApi(<Add />, fakeApi());
+    expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled();
+  });
+});

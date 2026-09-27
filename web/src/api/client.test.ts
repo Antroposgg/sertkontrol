@@ -37,6 +37,17 @@ describe('createApiClient', () => {
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
   });
 
+  it('POST multipart передаёт FormData без Content-Type', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([]));
+    const api = createApiClient({ getInitData: () => 'i', fetchImpl });
+    const form = new FormData();
+    form.append('file', new File(['x'], 'a.pdf'));
+    await expect(api.postForm('/check/file', form)).resolves.toEqual([]);
+    const [, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(init?.body).toBe(form);
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+  });
+
   it('DELETE без тела ответа', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const api = createApiClient({ getInitData: () => 'i', fetchImpl });

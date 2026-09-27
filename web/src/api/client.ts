@@ -20,6 +20,8 @@ export interface ApiClientOptions {
 export interface ApiClient {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
+  /** POST `multipart/form-data` (граница выставляет браузер). */
+  postForm<T>(path: string, form: FormData): Promise<T>;
   del(path: string): Promise<void>;
 }
 
@@ -35,7 +37,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       headers.set('X-Max-Init-Data', initData);
     }
     const init: RequestInit = { method, headers };
-    if (body !== undefined) {
+    if (body instanceof FormData) {
+      init.body = body;
+    } else if (body !== undefined) {
       headers.set('Content-Type', 'application/json');
       init.body = JSON.stringify(body);
     }
@@ -69,6 +73,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     },
     async post<T>(path: string, body: unknown): Promise<T> {
       return (await (await request('POST', path, body)).json()) as T;
+    },
+    async postForm<T>(path: string, form: FormData): Promise<T> {
+      return (await (await request('POST', path, form)).json()) as T;
     },
     async del(path: string): Promise<void> {
       await request('DELETE', path);
