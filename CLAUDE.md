@@ -3,7 +3,7 @@
 Сертконтроль — бот и мини-приложение MAX для проверки и мониторинга сертификатов и деклараций о соответствии.
 Модульный монолит на C++20 (`certd` + `ingest`), PostgreSQL 16, мини-приложение на React + TS.
 
-**Текущий этап: 1 — проверка документа на демо-снапшоте (завершён, ожидает команды на этап 2).** План и статус — [`docs/plan.md`](docs/plan.md).
+**Текущий этап: 2 — обновление данных и уведомления (завершён; `docker build`/compose-smoke ещё не прогнаны — docs/plan.md §6.4; ожидает команды на этап 3).** План и статус — [`docs/plan.md`](docs/plan.md).
 
 Источники истины (читать перед любой работой):
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — АРХ: стек, структура, контракты C1–C9, алгоритмы, CI;
@@ -18,16 +18,16 @@
 |---|---|---|---|---|
 | `libs/contracts` | все | Контракты C1, C2, C4, C5 + fake | этап 0 ✔ | [→](libs/contracts/README.md) |
 | `libs/canon` | R2 | Канонизация и грамматика номера (C1) | этап 1 ✔ | [→](libs/canon/README.md) |
-| `libs/snapshot` | R1 | Формат, writer, reader, diff (C2) | этап 1 ✔ (diff — 2) | [→](libs/snapshot/README.md) |
+| `libs/snapshot` | R1 | Формат, writer, reader, diff (C2) | этап 2 ✔ | [→](libs/snapshot/README.md) |
 | `libs/verify` | R2 | Поиск, правила вердикта, ИНН (C4) | этап 1 ✔ (нечёткий — 3) | [→](libs/verify/README.md) |
 | `libs/recog` | R3 | PDF, QR, OCR (C5) | этап 1 ✔ (OCR — 4) | [→](libs/recog/README.md) |
-| `libs/maxapi` | R4 | Bot API MAX, initData, события, C9 | этап 1 ✔ (лимитер — 2) | [→](libs/maxapi/README.md) |
-| `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 1 ✔ (`--demo`) | [→](apps/ingest/README.md) |
-| `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `/healthz`, статика | этап 1 ✔ | [→](apps/certd/README.md) |
-| `apps/certd/bot` | R4 | Диалоги бота | этап 1 ✔ | [→](apps/certd/bot/README.md) |
-| `web/` | R4 | Мини-приложение | этап 1 ✔ (Портфель, Добавить, Данные) | [→](web/README.md) |
-| `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 1 ✔ | [→](db/README.md) |
-| `data/demo/` | R1 | Демо-источники N и N+1 | этап 1 ✔ (N) | [→](data/demo/README.md) |
+| `libs/maxapi` | R4 | Bot API MAX, initData, события, C9, лимитер | этап 2 ✔ | [→](libs/maxapi/README.md) |
+| `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 2 ✔ (`--demo` N/N+1, `--daemon`; `--once` — после подтверждения данных) | [→](apps/ingest/README.md) |
+| `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `LISTEN`, задачи, уведомления, `/healthz`, статика | этап 2 ✔ | [→](apps/certd/README.md) |
+| `apps/certd/bot` | R4 | Диалоги бота, рендер уведомлений | этап 2 ✔ | [→](apps/certd/bot/README.md) |
+| `web/` | R4 | Мини-приложение | этап 2 ✔ (Портфель, Документ, Добавить, Данные; Импорт CSV — 4) | [→](web/README.md) |
+| `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 2 ✔ (`0003`) | [→](db/README.md) |
+| `data/demo/` | R1 | Демо-источники N и N+1 | этап 2 ✔ | [→](data/demo/README.md) |
 | `tests/`, `fuzz/`, `bench/` | все | Тесты, fuzz (этап 3), бенчмарки (этап 3) | — | [→](tests/README.md) |
 
 Роли (АРХ §1): R1 «Данные реестра», R2 «Поиск и вердикт», R3 «Backend и распознавание», R4 «MAX и продукт».
@@ -52,6 +52,8 @@ flowchart TB
 
 Все C++-модули дополнительно используют `libs/contracts` — лист графа, только стандартная библиотека.
 `libs/maxapi` — транспорт MAX: не знает о снапшоте, вердикте и домене.
+`certd/bot` рендерит уведомления из `ChangeNotice` (`apps/certd/notify.hpp`); домен вызывает рендер только через
+`NoticeRenderer`, собранный в `apps/certd/main.cpp`, — обратной зависимости certd → bot нет.
 
 Запреты (проверяются `scripts/ci/deps-check.sh` в CI):
 - `libs/contracts` — только стандартная библиотека;
@@ -59,7 +61,7 @@ flowchart TB
 - `canon` не знает о `snapshot`/`verify`; `snapshot` — о `verify`/`recog`; `verify` — о `recog`/`maxapi`;
 - `libs/maxapi` не включает `snapshot/`, `verify/`, `recog/` и домен certd;
 - `apps/ingest` не зависит от `apps/certd`;
-- `apps/certd/bot` трогает домен только через `DomainService` (C6);
+- `apps/certd/bot` трогает домен только через `DomainService` (C6); из `notify.hpp` берёт только тип `ChangeNotice`;
 - `web/` не импортирует ничего вне `web/src` и `package.json`.
 
 ## Команды
@@ -91,7 +93,7 @@ Node.js 24 — через nvm). Без установленных пакетов
 ## Правила изменения контрактов
 
 Контракты: C1, C2, C4, C5 — `libs/contracts/include/sertkontrol_contracts.hpp`; C3 — `apps/ingest/source_adapter.hpp`;
-C6 — `apps/certd/domain.hpp`; C7 — `openapi.yaml` (этап 1); C8, C9 — `db/migrations/*.sql` и `docs/contracts/outgoing_message.schema.json`.
+C6 — `apps/certd/domain.hpp`; C7 — `openapi.yaml`; C8, C9 — `db/migrations/*.sql` и `docs/contracts/outgoing_message.schema.json`.
 
 Изменение контракта = одновременно в одном коммите:
 1. правка файла контракта и всех его реализаций, включая fake;
