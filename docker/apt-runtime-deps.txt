@@ -8,5 +8,6 @@ libxxhash0
 libexpat1
 libsimdjson19
 ca-certificates
+openssl
 tzdata
 curl

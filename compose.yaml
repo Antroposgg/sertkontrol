@@ -50,7 +50,8 @@ services:
         APT_MIRROR: ${APT_MIRROR:-http://mirror.yandex.ru/ubuntu}
     image: sertkontrol:local
     depends_on:
-      migrate:
+      # ingest --demo собирает снапшот и регистрирует версию; certd загружает её при старте.
+      ingest:
         condition: service_completed_successfully
     environment:
       <<: *pg-env
@@ -59,6 +60,11 @@ services:
       WEB_ROOT: /srv/app
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+      MAX_BOT_USERNAME: ${MAX_BOT_USERNAME:-}
+      MAX_API_BASE_URL: ${MAX_API_BASE_URL:-https://platform-api2.max.ru}
+      # Локально без MAX мини-приложение открывается в браузере от этого пользователя.
+      # С MAX_BOT_TOKEN игнорируется — вход только по initData (ADR-0013).
+      CERTD_DEV_USER_ID: ${CERTD_DEV_USER_ID:-1000001}
     ports:
       - "${CERTD_PUBLISH_PORT:-8080}:8080"
     volumes:
@@ -77,7 +83,7 @@ services:
       migrate:
         condition: service_completed_successfully
     entrypoint: ["ingest"]
-    # Этап 0: заглушка. С этапа 1 собирает демо-пару N/N+1 при старте (docs/plan.md, противоречие 1).
+    # Собирает демо-снапшот при старте (docs/plan.md, противоречие 1); N+1 — этап 2.
     command: ["--demo", "--snapshot-dir", "/data/snapshots", "--demo-dir", "/opt/sertkontrol/demo"]
     environment:
       <<: *pg-env

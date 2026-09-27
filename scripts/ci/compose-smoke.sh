@@ -23,9 +23,15 @@ done
 code=$(curl -s -o "$tmp" -w '%{http_code}' "http://127.0.0.1:${port}/healthz")
 echo "/healthz → ${code}: $(cat "$tmp")"
 [[ "$code" == 200 ]]
+grep -q '"snapshot_version":1' "$tmp"
 index=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/")
 echo "/ (мини-приложение) → ${index}"
 [[ "$index" == 200 ]]
+# Сценарий через REST (dev-пользователь, ADR-0013): номер из демо-данных → вердикт по снапшоту.
+check=$(curl -s "http://127.0.0.1:${port}/api/v1/check?number=%D0%95%D0%90%D0%AD%D0%A1%20N%20RU%20%D0%94-CR.%D0%A0%D0%9008.%D0%92.89369%2F26")
+echo "/api/v1/check → ${check:0:200}"
+grep -q '"level":"ok"' <<<"$check"
+grep -q '"is_demo":true' <<<"$check"
 ingest_exit=$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -a -q ingest)")
 echo "ingest exit code: ${ingest_exit}"
 [[ "$ingest_exit" == 0 ]]

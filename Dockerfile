@@ -44,6 +44,11 @@ RUN apt-get update \
     && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sertkontrol \
     && mkdir -p /data/snapshots /data/sources \
     && chown sertkontrol:sertkontrol /data/snapshots /data/sources
+# Корень Минцифры: API MAX работает на сертификате Russian Trusted Sub CA (ADR-0012). Отпечаток сверяется.
+COPY docker/certs/russian_trusted_root_ca.crt /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
+RUN test "$(openssl x509 -in /usr/local/share/ca-certificates/russian_trusted_root_ca.crt -noout -fingerprint -sha256)" \
+      = "sha256 Fingerprint=D2:6D:2D:02:31:B7:C3:9F:92:CC:73:85:12:BA:54:10:35:19:E4:40:5D:68:B5:BD:70:3E:97:88:CA:8E:CF:31" \
+    && update-ca-certificates
 COPY --from=build /b/apps/certd/certd /b/apps/ingest/ingest /usr/local/bin/
 COPY --from=web /web/dist /srv/app
 COPY data/demo /opt/sertkontrol/demo
