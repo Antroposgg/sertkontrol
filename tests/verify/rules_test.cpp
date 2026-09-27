@@ -131,6 +131,7 @@ TEST_F(RulesTest, Table) {
       {"RU D-RU.PA01.B.10009/25", Level::kOk, {"status.active", "term.unknown", "advice.watch"}},
       {"RU D-RU.PA05.B.20000/25", Level::kNotFound, {"not_found", "advice.check_number"}},
       {"RU D-RU.PA01.B.99999/25", Level::kNotFound, {"not_found", "advice.check_number"}},
+      {"RU D-RU.PA01.B.99999/26", Level::kNotFound, {"not_found", "not_found.recent", "advice.check_number"}},
       {"привет", Level::kNotFound, {"number.unparsed"}},
   };
   for (const auto& row : table) {
@@ -147,8 +148,8 @@ TEST_F(RulesTest, Table) {
 }
 
 TEST_F(RulesTest, EveryFindingHasBasisMatchingCatalogPrefix) {
-  for (const auto* number :
-       {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10003/21", "RU D-RU.PA05.B.20000/25"}) {
+  for (const auto* number : {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10003/21", "RU D-RU.PA05.B.20000/25",
+                             "RU D-RU.PA01.B.99999/26"}) {
     for (const auto& f : run(number).findings) {
       if (f.rule.starts_with("advice.")) {
         EXPECT_EQ(f.basis, Basis::kRecommendation) << f.rule;
@@ -187,6 +188,11 @@ TEST_F(RulesTest, TextsMentionDates) {
             "Срок действия истекает через 10 дн.");
   EXPECT_EQ(find(run("RU D-RU.PA05.B.20000/25"), "not_found")->text,
             "Номера нет в данных реестра на 26.09.2026");
+  EXPECT_EQ(
+      find(run("RU D-RU.PA01.B.99999/26"), "not_found.recent")->text,
+      "Номер 2026 года: документ мог быть зарегистрирован после 26.09.2026 — проверьте его по ссылке из "
+      "QR-кода выписки");
+  EXPECT_EQ(find(run("RU D-RU.PA01.B.99999/25"), "not_found.recent"), nullptr);
 }
 
 TEST_F(RulesTest, NotFoundSuggestsNearestOfSameSerial) {

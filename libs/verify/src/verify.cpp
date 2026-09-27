@@ -4,7 +4,9 @@
 /// Каждое правило добавляет `Finding` с идентификатором из каталога и основанием
 /// «факт / расчёт / рекомендация» (КЕЙС §7 п.3). Функция чистая: без IO, «сегодня» — из запроса.
 #include <algorithm>
+#include <chrono>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,6 +36,24 @@ std::size_t levenshtein(std::string_view a, std::string_view b) {
     std::swap(prev, cur);
   }
   return prev[b.size()];
+}
+
+int year_of(Date date) {
+  return static_cast<int>(std::chrono::year_month_day{date}.year());
+}
+
+/// Год регистрации из суффикса номера `/ГГ` совпадает с годом даты данных (правило V5).
+bool registered_in_data_year(std::string_view canonical, Date data_date) {
+  if (canonical.size() < 3 || canonical[canonical.size() - 3] != '/') {
+    return false;
+  }
+  const char hi = canonical[canonical.size() - 2];
+  const char lo = canonical[canonical.size() - 1];
+  if (hi < '0' || hi > '9' || lo < '0' || lo > '9') {
+    return false;
+  }
+  const int yy = ((hi - '0') * 10) + (lo - '0');
+  return yy == year_of(data_date) % 100;
 }
 
 void add(Verdict& v, Basis basis, std::string rule, std::string text) {
@@ -185,6 +205,13 @@ Verdict check(const snapshot::Snapshot& snap, const Query& query) {
   v.level = Level::kNotFound;
   v.suggestions = nearest(snap, *canonical);
   add(v, Basis::kFact, "not_found", "Номера нет в данных реестра на " + format_date(v.data_date));
+  if (registered_in_data_year(*canonical, v.data_date)) {
+    // V5: документ текущего года мог быть зарегистрирован после даты данных — выписка 89369/26 из спайка
+    // сформирована в день регистрации (ТЗ R2, каталог правил).
+    add(v, Basis::kCalculation, "not_found.recent",
+        "Номер " + std::to_string(year_of(v.data_date)) + " года: документ мог быть зарегистрирован после " +
+            format_date(v.data_date) + " — проверьте его по ссылке из QR-кода выписки");
+  }
   add(v, Basis::kRecommendation, "advice.check_number",
       v.suggestions.empty()
           ? "Сверьте номер с документом; если он верный — запросите у поставщика подтверждение регистрации"
