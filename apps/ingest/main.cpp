@@ -78,7 +78,7 @@ int run_daemon() {
   while (g_stop == 0) {
     const auto next = sk::ingest::next_daily_run(std::chrono::system_clock::now(), sk::ingest::kDailyRunAt,
                                                  sk::ingest::kMoscowOffset);
-    std::cout << "ingest --daemon: следующий запуск " << format_utc(next) << " (04:00 МСК)" << std::endl;
+    std::cout << "ingest --daemon: следующий запуск " << format_utc(next) << " (04:00 МСК)\n" << std::flush;
     while (g_stop == 0 && std::chrono::system_clock::now() < next) {
       std::this_thread::sleep_for(std::chrono::seconds{1});
     }

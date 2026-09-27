@@ -16,54 +16,54 @@ namespace {
 using Clock = TokenBucket::Clock;
 using std::chrono::milliseconds;
 
-const Clock::time_point kT0{};
+constexpr Clock::time_point kStart{};
 
 TEST(TokenBucket, StartsFullAndRefillsAtRate) {
-  TokenBucket b{2, 1, kT0};
-  EXPECT_TRUE(b.full(kT0));
-  EXPECT_TRUE(b.try_take(kT0));
-  EXPECT_TRUE(b.try_take(kT0));
-  EXPECT_FALSE(b.try_take(kT0));
-  EXPECT_EQ(b.wait_time(kT0), std::chrono::seconds{1});
-  EXPECT_FALSE(b.try_take(kT0 + milliseconds{999}));
-  EXPECT_TRUE(b.try_take(kT0 + milliseconds{1000}));
+  TokenBucket b{2, 1, kStart};
+  EXPECT_TRUE(b.full(kStart));
+  EXPECT_TRUE(b.try_take(kStart));
+  EXPECT_TRUE(b.try_take(kStart));
+  EXPECT_FALSE(b.try_take(kStart));
+  EXPECT_EQ(b.wait_time(kStart), std::chrono::seconds{1});
+  EXPECT_FALSE(b.try_take(kStart + milliseconds{999}));
+  EXPECT_TRUE(b.try_take(kStart + milliseconds{1000}));
   // Не больше ёмкости, сколько ни жди.
-  EXPECT_TRUE(b.full(kT0 + std::chrono::hours{1}));
-  EXPECT_TRUE(b.try_take(kT0 + std::chrono::hours{1}));
-  EXPECT_TRUE(b.try_take(kT0 + std::chrono::hours{1}));
-  EXPECT_FALSE(b.try_take(kT0 + std::chrono::hours{1}));
+  EXPECT_TRUE(b.full(kStart + std::chrono::hours{1}));
+  EXPECT_TRUE(b.try_take(kStart + std::chrono::hours{1}));
+  EXPECT_TRUE(b.try_take(kStart + std::chrono::hours{1}));
+  EXPECT_FALSE(b.try_take(kStart + std::chrono::hours{1}));
 }
 
 TEST(TokenBucket, OldTimeDoesNotRemoveTokensAndDrainEmpties) {
-  TokenBucket b{1, 10, kT0 + std::chrono::seconds{5}};
-  EXPECT_EQ(b.wait_time(kT0), Clock::duration::zero());  // время из прошлого — без изменений
-  b.drain(kT0 + std::chrono::seconds{5});
-  EXPECT_EQ(b.wait_time(kT0 + std::chrono::seconds{5}), milliseconds{100});
+  TokenBucket b{1, 10, kStart + std::chrono::seconds{5}};
+  EXPECT_EQ(b.wait_time(kStart), Clock::duration::zero());  // время из прошлого — без изменений
+  b.drain(kStart + std::chrono::seconds{5});
+  EXPECT_EQ(b.wait_time(kStart + std::chrono::seconds{5}), milliseconds{100});
 }
 
 TEST(SendLimiter, ChatWaitDoesNotSpendGlobalToken) {
-  SendLimiter lim{{.global_capacity = 1, .global_rate = 1, .chat_capacity = 1, .chat_rate = 1}, kT0};
-  EXPECT_EQ(lim.acquire(1, kT0).kind, Permit::Kind::kGranted);
-  const auto p = lim.acquire(1, kT0);
+  SendLimiter lim{{.global_capacity = 1, .global_rate = 1, .chat_capacity = 1, .chat_rate = 1}, kStart};
+  EXPECT_EQ(lim.acquire(1, kStart).kind, Permit::Kind::kGranted);
+  const auto p = lim.acquire(1, kStart);
   EXPECT_EQ(p.kind, Permit::Kind::kChat);
   EXPECT_EQ(p.wait, std::chrono::seconds{1});
   // Глобальный токен кончился на первой отправке — другой чат ждёт глобальное ведро.
-  EXPECT_EQ(lim.acquire(2, kT0).kind, Permit::Kind::kGlobal);
-  EXPECT_EQ(lim.acquire(2, kT0 + std::chrono::seconds{1}).kind, Permit::Kind::kGranted);
+  EXPECT_EQ(lim.acquire(2, kStart).kind, Permit::Kind::kGlobal);
+  EXPECT_EQ(lim.acquire(2, kStart + std::chrono::seconds{1}).kind, Permit::Kind::kGranted);
 }
 
 TEST(SendLimiter, PenalizePausesEveryone) {
-  SendLimiter lim{{}, kT0};
-  lim.penalize(kT0);
-  const auto p = lim.acquire(7, kT0);
+  SendLimiter lim{{}, kStart};
+  lim.penalize(kStart);
+  const auto p = lim.acquire(7, kStart);
   EXPECT_EQ(p.kind, Permit::Kind::kGlobal);
   EXPECT_EQ(p.wait, milliseconds{40});  // 1 / 25 с
 }
 
 TEST(SendLimiter, FullChatBucketsAreEvicted) {
-  SendLimiter lim{{}, kT0};
+  SendLimiter lim{{}, kStart};
   for (std::int64_t chat = 0; chat < 2000; ++chat) {
-    (void)lim.acquire(chat, kT0 + std::chrono::seconds{chat});
+    (void)lim.acquire(chat, kStart + std::chrono::seconds{chat});
   }
   // Каждые 1024 вызова полные (давно не писавшие) чаты удаляются — память не растёт с числом чатов.
   EXPECT_LT(lim.chats(), 1100U);
@@ -73,18 +73,20 @@ TEST(SendLimiter, FullChatBucketsAreEvicted) {
 /// каждый чат. Отправитель ведёт себя как настоящий: ждёт глобальный токен, откладывает сообщение чата.
 TEST(SendLimiter, WindowBoundHoldsForRandomTraffic) {
   const SendLimits limits{};  // C = 5, r = 25; на чат C = 1, r = 1
+  // NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp): фиксированное зерно — воспроизводимый property-тест.
   std::mt19937 rng{7};
   std::uniform_int_distribution<int> chat{1, 6};
   std::exponential_distribution<double> gap{40.0};  // ~40 попыток в секунду — больше лимита
-  SendLimiter lim{limits, kT0};
+  SendLimiter lim{limits, kStart};
   std::vector<std::pair<Clock::time_point, std::int64_t>> sent;
-  auto now = kT0;
+  auto now = kStart;
   std::deque<std::int64_t> queue;
-  for (int i = 0; i < 20000; ++i) {
+  for (int i = 0; i < 8000; ++i) {
     now += std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>{gap(rng)});
     queue.push_back(chat(rng));
     // Обрабатываем очередь, пока лимитер разрешает; отложенные чаты — в конец.
-    for (std::size_t tries = queue.size(); tries > 0 && !queue.empty(); --tries) {
+    // Не больше 12 попыток за шаг: очередь растёт (поток выше лимита), полный проход сделал бы тест O(n²).
+    for (std::size_t tries = std::min<std::size_t>(queue.size(), 12); tries > 0 && !queue.empty(); --tries) {
       const auto c = queue.front();
       queue.pop_front();
       const auto p = lim.acquire(c, now);

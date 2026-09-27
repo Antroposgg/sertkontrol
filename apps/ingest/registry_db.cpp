@@ -69,10 +69,10 @@ std::string changes_json(const std::vector<snapshot::DocChange>& changes) {
       out.push_back(',');
     }
     const auto& date = c.after ? c.after->status_date : std::optional<Date>{};
-    out += "{\"doc_key\":" + json_string(c.doc_key) +
-           ",\"before\":" + (c.before ? doc_state_json(*c.before) : std::string{"null"}) +
-           ",\"after\":" + (c.after ? doc_state_json(*c.after) : std::string{"null"}) +
-           ",\"status_date\":" + json_date(date) + "}";
+    out += R"({"doc_key":)" + json_string(c.doc_key) + R"(,"before":)" +
+           (c.before ? doc_state_json(*c.before) : std::string{"null"}) + R"(,"after":)" +
+           (c.after ? doc_state_json(*c.after) : std::string{"null"}) + R"(,"status_date":)" +
+           json_date(date) + "}";
   }
   out.push_back(']');
   return out;
@@ -81,22 +81,20 @@ std::string changes_json(const std::vector<snapshot::DocChange>& changes) {
 }  // namespace
 
 std::string doc_state_json(const snapshot::DocState& state) {
-  return "{\"status\":" + json_string(snapshot::to_string(state.status)) +
-         ",\"expiry_date\":" + json_date(state.expiry_date) +
-         ",\"status_date\":" + json_date(state.status_date) + "}";
+  return R"({"status":)" + json_string(snapshot::to_string(state.status)) + R"(,"expiry_date":)" +
+         json_date(state.expiry_date) + R"(,"status_date":)" + json_date(state.status_date) + "}";
 }
 
 std::string stats_json(const BuildResult& build, const snapshot::DiffStats* diff,
                        std::size_t written_changes) {
-  std::string out = "{\"records\":" + std::to_string(build.stats.records) +
-                    ",\"duplicates\":" + std::to_string(build.stats.duplicates) +
-                    ",\"rejected\":" + std::to_string(build.rejected) +
-                    ",\"bytes\":" + std::to_string(build.stats.bytes) +
-                    ",\"changes_written\":" + std::to_string(written_changes);
+  std::string out = R"({"records":)" + std::to_string(build.stats.records) + R"(,"duplicates":)" +
+                    std::to_string(build.stats.duplicates) + R"(,"rejected":)" +
+                    std::to_string(build.rejected) + R"(,"bytes":)" + std::to_string(build.stats.bytes) +
+                    R"(,"changes_written":)" + std::to_string(written_changes);
   if (diff != nullptr) {
-    out += ",\"diff\":{\"added\":" + std::to_string(diff->added) +
-           ",\"removed\":" + std::to_string(diff->removed) + ",\"changed\":" + std::to_string(diff->changed) +
-           ",\"unchanged\":" + std::to_string(diff->unchanged) + ",\"transitions\":{";
+    out += R"(,"diff":{"added":)" + std::to_string(diff->added) + R"(,"removed":)" +
+           std::to_string(diff->removed) + R"(,"changed":)" + std::to_string(diff->changed) +
+           R"(,"unchanged":)" + std::to_string(diff->unchanged) + R"(,"transitions":{)";
     bool first = true;
     for (const auto& [from_to, n] : diff->transitions) {
       if (!first) {

@@ -40,7 +40,11 @@ DiffStats diff(const Snapshot& before, const Snapshot& after,
       cmp = kb[i] < ka[j] ? -1 : 1;
     } else {
       const auto c = before.record(i).number.compare(after.record(j).number);
-      cmp = c < 0 ? -1 : (c > 0 ? 1 : 0);
+      if (c < 0) {
+        cmp = -1;
+      } else if (c > 0) {
+        cmp = 1;
+      }
     }
     if (cmp < 0) {
       const auto rec = before.record(i++);

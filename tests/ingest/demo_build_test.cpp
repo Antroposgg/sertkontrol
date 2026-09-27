@@ -13,6 +13,7 @@
 #include "normalize.hpp"
 #include "registry_db.hpp"
 #include "schedule.hpp"
+#include "support/checked.hpp"
 #include "support/files.hpp"
 #include "support/pg.hpp"
 
@@ -267,10 +268,10 @@ TEST(DemoPair, NextDiffersByFiveScenarioChanges) {
   EXPECT_EQ(stats.added, 1U);
   EXPECT_EQ(stats.removed, 0U);
   EXPECT_EQ(stats.changed, 4U);
-  EXPECT_EQ(changes.at("RUD-CR.PA08.B.89369/26").after->status, Status::kSuspended);
-  EXPECT_EQ(changes.at("RUD-CN.PA01.B.10002/25").after->status, Status::kTerminated);
-  EXPECT_EQ(changes.at("RUD-TR.PA03.B.10004/24").after->status, Status::kActive);
-  EXPECT_EQ(changes.at("RUC-CN.AЯ46.B.10006/25").after->status, Status::kAnnulled);
+  EXPECT_EQ(test::checked(changes.at("RUD-CR.PA08.B.89369/26").after).status, Status::kSuspended);
+  EXPECT_EQ(test::checked(changes.at("RUD-CN.PA01.B.10002/25").after).status, Status::kTerminated);
+  EXPECT_EQ(test::checked(changes.at("RUD-TR.PA03.B.10004/24").after).status, Status::kActive);
+  EXPECT_EQ(test::checked(changes.at("RUC-CN.AЯ46.B.10006/25").after).status, Status::kAnnulled);
   EXPECT_FALSE(changes.at("RUD-CR.PA07.B.89369/26").before.has_value());
   std::filesystem::remove_all(dir);
 }
