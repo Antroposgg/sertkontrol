@@ -48,6 +48,7 @@ target_compile_definitions(recog_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_S
 sk_add_test(maxapi_test
   maxapi/auth_test.cpp
   maxapi/update_message_test.cpp
+  maxapi/rate_limit_test.cpp
   LIBS sk::maxapi OpenSSL::Crypto)
 target_compile_definitions(maxapi_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
