@@ -31,6 +31,7 @@ struct Config {
 
   /// Пользователь мини-приложения без MAX (локальный запуск). Только при пустом токене — ADR-0013.
   std::optional<std::int64_t> dev_user_id{};
+  bool dev_user_id_ignored{false};  ///< CERTD_DEV_USER_ID задан, но проигнорирован: есть токен бота.
 
   // ── Распознавание ──
   std::size_t recog_threads{2};

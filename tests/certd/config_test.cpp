@@ -74,6 +74,44 @@ INSTANTIATE_TEST_SUITE_P(All, ConfigInvalid,
                                            std::pair{"POSTGRES_PORT", "abc"},
                                            std::pair{"CERTD_DB_CONNECTIONS", "0"}));
 
+TEST(Config, MaxSettings) {
+  const auto off = load_config(env_of({}));
+  ASSERT_TRUE(off);
+  EXPECT_FALSE(off.value().bot_enabled());
+  EXPECT_EQ(off.value().max_api_base_url, "https://platform-api2.max.ru");
+  EXPECT_EQ(off.value().recog_threads, 2U);
+  EXPECT_EQ(off.value().recog_queue, 8U);
+
+  const auto on = load_config(env_of({{"MAX_BOT_TOKEN", "t"},
+                                      {"MAX_WEBHOOK_SECRET", "Secret_123-x"},
+                                      {"MAX_BOT_USERNAME", "sertkontrol_bot"},
+                                      {"CERTD_RECOG_THREADS", "4"}}));
+  ASSERT_TRUE(on) << on.error().detail;
+  EXPECT_TRUE(on.value().bot_enabled());
+  EXPECT_EQ(on.value().max_bot_username, "sertkontrol_bot");
+  EXPECT_EQ(on.value().recog_threads, 4U);
+
+  EXPECT_FALSE(load_config(env_of({{"MAX_BOT_TOKEN", "t"}})));  // без секрета
+  EXPECT_FALSE(load_config(env_of({{"MAX_WEBHOOK_SECRET", "abc"}})));  // короче 5
+  EXPECT_FALSE(load_config(env_of({{"MAX_WEBHOOK_SECRET", "bad secret!"}})));
+  EXPECT_FALSE(load_config(env_of({{"CERTD_RECOG_QUEUE", "0"}})));
+  EXPECT_FALSE(load_config(env_of({{"CERTD_DEV_USER_ID", "x"}})));
+}
+
+// ADR-0013: dev-пользователь работает только без токена бота.
+TEST(Config, DevUserOnlyWithoutBotToken) {
+  const auto dev = load_config(env_of({{"CERTD_DEV_USER_ID", "1000001"}}));
+  ASSERT_TRUE(dev);
+  EXPECT_EQ(dev.value().dev_user_id, 1000001);
+  EXPECT_FALSE(dev.value().dev_user_id_ignored);
+
+  const auto prod = load_config(
+      env_of({{"CERTD_DEV_USER_ID", "1000001"}, {"MAX_BOT_TOKEN", "t"}, {"MAX_WEBHOOK_SECRET", "secret-1"}}));
+  ASSERT_TRUE(prod);
+  EXPECT_FALSE(prod.value().dev_user_id.has_value());
+  EXPECT_TRUE(prod.value().dev_user_id_ignored);
+}
+
 TEST(Config, QuoteEscapes) {
   EXPECT_EQ(conninfo_quote(""), "''");
   EXPECT_EQ(conninfo_quote("a b"), "'a b'");

@@ -111,11 +111,10 @@ Result<Config> load_config(const EnvLookup& env) {
   if (!dev) {
     return dev.error();
   }
-  if (dev.value() != 0) {
-    // ADR-0013: вход без initData возможен только там, где подпись проверить нечем.
-    if (cfg.bot_enabled()) {
-      return Error{ErrorCode::kInvalidArgument, "CERTD_DEV_USER_ID нельзя задавать вместе с MAX_BOT_TOKEN"};
-    }
+  // ADR-0013: вход без initData возможен только там, где подпись проверить нечем. С токеном бота
+  // dev-пользователь игнорируется (main.cpp предупреждает в логе), чтобы один compose.yaml годился и локально, и на VPS.
+  cfg.dev_user_id_ignored = dev.value() != 0 && cfg.bot_enabled();
+  if (dev.value() != 0 && !cfg.bot_enabled()) {
     cfg.dev_user_id = static_cast<std::int64_t>(dev.value());
   }
   const auto recog_threads = get_uint(env, "CERTD_RECOG_THREADS", 2, 1, 32);

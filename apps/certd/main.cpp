@@ -111,6 +111,9 @@ int run() {
       app,
       std::make_shared<sk::certd::RestApi>(
           domain, sk::certd::AuthConfig{.bot_token = cfg.max_bot_token, .dev_user_id = cfg.dev_user_id}));
+  if (cfg.dev_user_id_ignored) {
+    LOG_WARN << "CERTD_DEV_USER_ID проигнорирован: задан MAX_BOT_TOKEN, вход только по initData (ADR-0013)";
+  }
   if (cfg.dev_user_id) {
     LOG_WARN << "CERTD_DEV_USER_ID: мини-приложение без MAX работает от пользователя " << *cfg.dev_user_id
              << " (ADR-0013, только локально)";
@@ -162,6 +165,7 @@ int run() {
   // иначе он создаётся в рабочем каталоге, куда у непривилегированного пользователя нет прав.
   app.setDocumentRoot(cfg.web_root.string())
       .setUploadPath((std::filesystem::temp_directory_path() / "certd-uploads").string())
+      .setUnicodeEscapingInJson(false)
       .setClientMaxBodySize(kMaxBodyBytes)
       .setClientMaxMemoryBodySize(kMaxBodyBytes)
       .setThreadNum(cfg.threads)

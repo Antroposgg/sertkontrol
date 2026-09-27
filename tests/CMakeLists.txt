@@ -9,6 +9,8 @@ function(sk_add_test name)
   target_link_libraries(${name} PRIVATE ${ARG_LIBS} GTest::gtest_main GTest::gmock)
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   sk_set_warnings(${name})
+  # Тесты не входят в образ; unity склеил бы одноимённые константы разных тестовых файлов.
+  set_target_properties(${name} PROPERTIES UNITY_BUILD OFF)
   gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30)
 endfunction()
 

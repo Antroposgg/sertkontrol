@@ -6,7 +6,7 @@ namespace sk::certd {
 
 namespace {
 
-std::string_view basis_name(verify::Basis b) {
+std::string_view basis_json(verify::Basis b) {
   switch (b) {
     case verify::Basis::kFact:
       return "fact";
@@ -18,7 +18,7 @@ std::string_view basis_name(verify::Basis b) {
   return "fact";
 }
 
-std::string_view level_name(verify::Level l) {
+std::string_view level_json(verify::Level l) {
   switch (l) {
     case verify::Level::kOk:
       return "ok";
@@ -34,7 +34,7 @@ std::string_view level_name(verify::Level l) {
   return "not_found";
 }
 
-std::string_view kind_name(canon::DocKind k) {
+std::string_view kind_json(canon::DocKind k) {
   return k == canon::DocKind::kCertificate ? "certificate" : "declaration";
 }
 
@@ -128,7 +128,7 @@ Json::Value to_json(const verify::Verdict& v) {
   j["query"] = v.query;
   j["number"] = v.number.empty() ? Json::Value{} : Json::Value{v.number};
   j["display_number"] = v.number.empty() ? Json::Value{} : Json::Value{verify::display_number(v.number)};
-  j["level"] = std::string{level_name(v.level)};
+  j["level"] = std::string{level_json(v.level)};
   j["data_date"] = iso_date(v.data_date);
   j["snapshot_version"] = static_cast<Json::UInt64>(v.snapshot_version);
   j["is_demo"] = v.is_demo;
@@ -136,7 +136,7 @@ Json::Value to_json(const verify::Verdict& v) {
   if (v.card) {
     const auto& c = *v.card;
     Json::Value card{Json::objectValue};
-    card["kind"] = std::string{kind_name(c.kind)};
+    card["kind"] = std::string{kind_json(c.kind)};
     card["status"] = std::string{snapshot::to_string(c.status)};
     card["status_name"] = std::string{verify::status_name(c.status)};
     card["issue_date"] = date_or_null(c.issue_date);
@@ -155,7 +155,7 @@ Json::Value to_json(const verify::Verdict& v) {
   j["findings"] = Json::Value{Json::arrayValue};
   for (const auto& f : v.findings) {
     Json::Value jf{Json::objectValue};
-    jf["basis"] = std::string{basis_name(f.basis)};
+    jf["basis"] = std::string{basis_json(f.basis)};
     jf["rule"] = f.rule;
     jf["text"] = f.text;
     j["findings"].append(jf);
@@ -182,7 +182,7 @@ Json::Value to_json(const PortfolioItem& item) {
   j["id"] = static_cast<Json::Int64>(item.id);
   j["doc_key"] = item.doc_key;
   j["display_number"] = verify::display_number(item.doc_key);
-  j["doc_kind"] = std::string{kind_name(item.doc_kind)};
+  j["doc_kind"] = std::string{kind_json(item.doc_kind)};
   j["sku"] = item.sku ? Json::Value{*item.sku} : Json::Value{};
   j["supplier_inn"] = item.supplier_inn ? Json::Value{*item.supplier_inn} : Json::Value{};
   j["last_status"] = std::string{snapshot::to_string(item.last_status)};

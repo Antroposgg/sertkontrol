@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "base",
@@ -10,11 +14,12 @@
     },
     {
       "name": "gcc-release",
-      "displayName": "GCC 13, Release, -Werror",
+      "displayName": "GCC 13, Release, unity (как в Docker), -Werror",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++-13",
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_UNITY_BUILD": "ON"
       }
     },
     {
@@ -58,21 +63,56 @@
     }
   ],
   "buildPresets": [
-    { "name": "gcc-release", "configurePreset": "gcc-release" },
-    { "name": "clang-asan", "configurePreset": "clang-asan" },
-    { "name": "coverage", "configurePreset": "coverage" },
-    { "name": "tidy", "configurePreset": "tidy" },
-    { "name": "docker", "configurePreset": "docker" }
+    {
+      "name": "gcc-release",
+      "configurePreset": "gcc-release"
+    },
+    {
+      "name": "clang-asan",
+      "configurePreset": "clang-asan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
+      "name": "tidy",
+      "configurePreset": "tidy"
+    },
+    {
+      "name": "docker",
+      "configurePreset": "docker"
+    }
   ],
   "testPresets": [
     {
       "name": "base",
       "hidden": true,
-      "output": { "outputOnFailure": true },
-      "execution": { "repeat": { "mode": "until-fail", "count": 2 }, "noTestsAction": "error" }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "repeat": {
+          "mode": "until-fail",
+          "count": 2
+        },
+        "noTestsAction": "error"
+      }
     },
-    { "name": "gcc-release", "inherits": "base", "configurePreset": "gcc-release" },
-    { "name": "clang-asan", "inherits": "base", "configurePreset": "clang-asan" },
-    { "name": "coverage", "inherits": "base", "configurePreset": "coverage" }
+    {
+      "name": "gcc-release",
+      "inherits": "base",
+      "configurePreset": "gcc-release"
+    },
+    {
+      "name": "clang-asan",
+      "inherits": "base",
+      "configurePreset": "clang-asan"
+    },
+    {
+      "name": "coverage",
+      "inherits": "base",
+      "configurePreset": "coverage"
+    }
   ]
 }

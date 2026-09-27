@@ -8,7 +8,7 @@ namespace sk::maxapi {
 
 namespace {
 
-Error invalid(const std::string& what) {
+Error invalid_update(const std::string& what) {
   return Error{ErrorCode::kInvalidArgument, "Update: " + what};
 }
 
@@ -24,7 +24,7 @@ Result<Update> parse_message_created(const Json::Value& root) {
   const auto& body = msg["body"];
   if (!msg.isObject() || !body.isObject() || !body["mid"].isString() ||
       !msg["sender"]["user_id"].isIntegral()) {
-    return invalid("message_created без message.body.mid или sender.user_id");
+    return invalid_update("message_created без message.body.mid или sender.user_id");
   }
   MessageCreated m;
   m.timestamp = int64_of(root["timestamp"]);
@@ -50,7 +50,7 @@ Result<Update> parse_message_created(const Json::Value& root) {
 Result<Update> parse_callback(const Json::Value& root) {
   const auto& cb = root["callback"];
   if (!cb.isObject() || !cb["callback_id"].isString() || !cb["user"]["user_id"].isIntegral()) {
-    return invalid("message_callback без callback.callback_id или user.user_id");
+    return invalid_update("message_callback без callback.callback_id или user.user_id");
   }
   return Update{MessageCallback{.timestamp = int64_of(root["timestamp"]),
                                 .callback_id = cb["callback_id"].asString(),
@@ -60,7 +60,7 @@ Result<Update> parse_callback(const Json::Value& root) {
 
 Result<Update> parse_bot_started(const Json::Value& root) {
   if (!root["user"]["user_id"].isIntegral()) {
-    return invalid("bot_started без user.user_id");
+    return invalid_update("bot_started без user.user_id");
   }
   BotStarted b{.timestamp = int64_of(root["timestamp"]),
                .user_id = root["user"]["user_id"].asInt64(),
@@ -80,7 +80,7 @@ Result<Update> parse_update(std::string_view json) {
   const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
   if (!reader->parse(json.data(), json.data() + json.size(), &root, &errs) || !root.isObject() ||
       !root["update_type"].isString()) {
-    return invalid("не JSON-объект с update_type");
+    return invalid_update("не JSON-объект с update_type");
   }
   const auto type = root["update_type"].asString();
   if (type == "message_created") {

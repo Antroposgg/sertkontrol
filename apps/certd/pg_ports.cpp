@@ -8,7 +8,7 @@ namespace sk::certd {
 
 namespace {
 
-Error db_error(const drogon::orm::DrogonDbException& e) {
+Error pg_error(const drogon::orm::DrogonDbException& e) {
   return Error{ErrorCode::kInternal, std::string{"БД: "} + e.base().what()};
 }
 
@@ -30,7 +30,7 @@ drogon::Task<Result<Ok>> PgOutbox::enqueue(maxapi::OutgoingMessage msg, int prio
         msg.max_user_id, maxapi::to_outbox_json(msg), static_cast<std::int16_t>(priority));
     co_return Ok{};
   } catch (const drogon::orm::DrogonDbException& e) {
-    co_return db_error(e);
+    co_return pg_error(e);
   }
 }
 
@@ -41,7 +41,7 @@ drogon::Task<Result<bool>> PgInboundLog::first_seen(std::string dedup_key) {
         dedup_key);
     co_return !r.empty();
   } catch (const drogon::orm::DrogonDbException& e) {
-    co_return db_error(e);
+    co_return pg_error(e);
   }
 }
 
@@ -62,7 +62,7 @@ drogon::Task<Result<std::size_t>> OutboxSender::recover_stale() {
         "minute'");
     co_return static_cast<std::size_t>(r.affectedRows());
   } catch (const drogon::orm::DrogonDbException& e) {
-    co_return db_error(e);
+    co_return pg_error(e);
   }
 }
 
@@ -86,7 +86,7 @@ drogon::Task<Result<std::size_t>> OutboxSender::drain(std::size_t max_messages) 
       attempts = r[0]["attempts"].as<int>();
       payload = r[0]["payload"].as<std::string>();
     } catch (const drogon::orm::DrogonDbException& e) {
-      co_return db_error(e);
+      co_return pg_error(e);
     }
     ++done;
     auto msg = maxapi::from_outbox_json(payload);
@@ -112,7 +112,7 @@ drogon::Task<Result<std::size_t>> OutboxSender::drain(std::size_t max_messages) 
                                   sent.error().detail);
       }
     } catch (const drogon::orm::DrogonDbException& e) {
-      co_return db_error(e);
+      co_return pg_error(e);
     }
   }
   co_return done;

@@ -34,7 +34,7 @@ bool is_word_payload(std::string_view s) {
   });
 }
 
-Error invalid(const std::string& what) {
+Error invalid_message(const std::string& what) {
   return Error{ErrorCode::kInvalidArgument, "OutgoingMessage: " + what};
 }
 
@@ -78,43 +78,43 @@ std::string html_escape(std::string_view text) {
 
 Result<Ok> validate(const OutgoingMessage& msg) {
   if (msg.max_user_id <= 0) {
-    return invalid("нет получателя");
+    return invalid_message("нет получателя");
   }
   const auto len = utf8_length(msg.text);
   if (len == 0 || len > kMaxTextLength) {
-    return invalid("длина текста " + std::to_string(len) + " вне 1.." + std::to_string(kMaxTextLength));
+    return invalid_message("длина текста " + std::to_string(len) + " вне 1.." + std::to_string(kMaxTextLength));
   }
   if (msg.buttons.size() > kMaxRows) {
-    return invalid("больше " + std::to_string(kMaxRows) + " рядов кнопок");
+    return invalid_message("больше " + std::to_string(kMaxRows) + " рядов кнопок");
   }
   for (const auto& row : msg.buttons) {
     if (row.empty() || row.size() > kMaxButtonsPerRow) {
-      return invalid("в ряду 1.." + std::to_string(kMaxButtonsPerRow) + " кнопок");
+      return invalid_message("в ряду 1.." + std::to_string(kMaxButtonsPerRow) + " кнопок");
     }
     const auto special =
         std::ranges::count_if(row, [](const Button& b) { return b.kind != Button::Kind::kCallback; });
     if (static_cast<std::size_t>(special) > kMaxSpecialButtonsPerRow) {
-      return invalid("больше 3 кнопок link/open_app в ряду");
+      return invalid_message("больше 3 кнопок link/open_app в ряду");
     }
     for (const auto& b : row) {
       const auto t = utf8_length(b.text);
       if (t == 0 || t > kMaxButtonText) {
-        return invalid("текст кнопки 1.." + std::to_string(kMaxButtonText) + " символов");
+        return invalid_message("текст кнопки 1.." + std::to_string(kMaxButtonText) + " символов");
       }
       switch (b.kind) {
         case Button::Kind::kCallback:
           if (b.payload.empty() || b.payload.size() > kMaxCallbackPayload) {
-            return invalid("payload callback-кнопки 1.." + std::to_string(kMaxCallbackPayload));
+            return invalid_message("payload callback-кнопки 1.." + std::to_string(kMaxCallbackPayload));
           }
           break;
         case Button::Kind::kLink:
           if (!b.url.starts_with("https://")) {
-            return invalid("ссылка кнопки должна начинаться с https://");
+            return invalid_message("ссылка кнопки должна начинаться с https://");
           }
           break;
         case Button::Kind::kOpenApp:
           if (b.payload.size() > kMaxOpenAppPayload || !is_word_payload(b.payload)) {
-            return invalid("payload open_app: [A-Za-z0-9_-]{0,512}");
+            return invalid_message("payload open_app: [A-Za-z0-9_-]{0,512}");
           }
           break;
       }
@@ -165,7 +165,7 @@ Result<OutgoingMessage> from_outbox_json(std::string_view json) {
   const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
   if (!reader->parse(json.data(), json.data() + json.size(), &v, &errs) || !v.isObject() ||
       v["version"].asInt() != 1 || !v["max_user_id"].isIntegral() || !v["text"].isString()) {
-    return invalid("строка outbox не соответствует C9 v1");
+    return invalid_message("строка outbox не соответствует C9 v1");
   }
   OutgoingMessage m;
   m.max_user_id = v["max_user_id"].asInt64();
@@ -192,7 +192,7 @@ Result<OutgoingMessage> from_outbox_json(std::string_view json) {
       } else if (type == "callback") {
         b.payload = jb["payload"].asString();
       } else {
-        return invalid("неизвестный тип кнопки «" + type + "»");
+        return invalid_message("неизвестный тип кнопки «" + type + "»");
       }
       r.push_back(std::move(b));
     }
