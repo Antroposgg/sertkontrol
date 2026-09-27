@@ -12,7 +12,7 @@ cleanup() {
 }
 trap 'cleanup $?' EXIT
 compose up -d --build
-# Ждём healthy именно certd: --wait считает ошибкой штатный выход одноразовых сервисов (migrate, ingest).
+# Ждём healthy именно certd: --wait считает ошибкой штатный выход одноразовых сервисов (migrate, ingest-demo).
 certd_id="$(compose ps -q certd)"
 for i in $(seq 1 90); do
   status="$(docker inspect -f '{{.State.Health.Status}}' "$certd_id")"
@@ -32,7 +32,9 @@ check=$(curl -s "http://127.0.0.1:${port}/api/v1/check?number=%D0%95%D0%90%D0%AD
 echo "/api/v1/check → ${check:0:200}"
 grep -q '"level":"ok"' <<<"$check"
 grep -q '"is_demo":true' <<<"$check"
-ingest_exit=$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -a -q ingest)")
-echo "ingest exit code: ${ingest_exit}"
+ingest_exit=$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -a -q ingest-demo)")
+echo "ingest-demo exit code: ${ingest_exit}"
 [[ "$ingest_exit" == 0 ]]
+# Демон ежедневного обновления жив и ждёт 04:00 МСК.
+[[ "$(docker inspect -f '{{.State.Running}}' "$(compose ps -q ingest)")" == true ]]
 echo "compose-smoke: OK"

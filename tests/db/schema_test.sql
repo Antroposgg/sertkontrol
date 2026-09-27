@@ -56,5 +56,13 @@ BEGIN
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'ok: supplier.inn CHECK';
 END $$;
+DO $$
+BEGIN
+  INSERT INTO snapshot_version (version, source, source_date, file_path, status, is_demo, demo_stage)
+    VALUES (3, 'fsa', now(), 'p', 'ready', false, 1);
+  RAISE EXCEPTION 'FAIL: demo_stage у боевой версии принят';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'ok: snapshot_version.demo_stage только у демо';
+END $$;
 
 ROLLBACK;

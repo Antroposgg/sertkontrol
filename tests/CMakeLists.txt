@@ -85,3 +85,6 @@ sk_add_test(ingest_test
 target_compile_definitions(ingest_test PRIVATE
   SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
   SK_DEMO_DIR="${PROJECT_SOURCE_DIR}/data/demo")
+# Тест демо-пары слушает NOTIFY snapshot_ready напрямую через libpq.
+find_package(PostgreSQL REQUIRED)
+target_link_libraries(ingest_test PRIVATE PostgreSQL::PostgreSQL)
