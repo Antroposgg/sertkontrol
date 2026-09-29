@@ -14,6 +14,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Тесты с PostgreSQL не пропускаются молча: без базы with-pg.sh падает (scripts/ci/with-pg.sh).
+  SK_REQUIRE_PG: "1"
+
 jobs:
   cpp-gcc:
     name: C++ · GCC 13 Release

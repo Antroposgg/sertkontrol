@@ -5,12 +5,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 step() { printf '\n══════ %s ══════\n' "$*"; }
+# C++-тесты с БД: в dev-контейнере нет Docker, и with-pg.sh там пропускал бы их (GTEST_SKIP). Временный PostgreSQL
+# поднимается на хосте, контейнер получает SK_TEST_PG и сеть хоста. На каждый шаг — своя чистая база.
+dev_pg() { scripts/ci/with-pg.sh env SK_DEV_DOCKER_ARGS="${SK_DEV_DOCKER_ARGS:-} --network host -e SK_TEST_PG -e SK_REQUIRE_PG=1" scripts/dev.sh "$@"; }
 node_run() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src node:24-slim "$@"; }
 
 step "запреты импорта";            scripts/ci/deps-check.sh
 step "clang-format";               scripts/dev.sh scripts/ci/cpp-format-check.sh
-step "GCC 13 Release + тесты ×2";  scripts/dev.sh scripts/ci/cpp-build-test.sh gcc-release
-step "clang 18 ASan/UBSan + тесты ×2"; scripts/dev.sh scripts/ci/cpp-build-test.sh clang-asan
+step "GCC 13 Release + тесты ×2";  dev_pg scripts/ci/cpp-build-test.sh gcc-release
+step "clang 18 ASan/UBSan + тесты ×2"; dev_pg scripts/ci/cpp-build-test.sh clang-asan
 # TSan clang 18 при vm.mmap_rnd_bits > 28 перезапускает процесс с personality(ADDR_NO_RANDOMIZE), а seccomp-профиль
 # Docker по умолчанию этот вызов запрещает. Профиль снимается только у этого одноразового контейнера; в CI TSan идёт на раннере.
 step "clang 18 TSan + тесты ×2";   SK_DEV_DOCKER_ARGS="--security-opt seccomp=unconfined" \
@@ -18,7 +21,7 @@ step "clang 18 TSan + тесты ×2";   SK_DEV_DOCKER_ARGS="--security-opt secc
 step "fuzz smoke 60 с на цель";    scripts/dev.sh scripts/ci/fuzz-smoke.sh
 step "бенчмарки против АРХ §2";    scripts/dev.sh scripts/ci/bench.sh
 step "clang-tidy";                 scripts/dev.sh scripts/ci/cpp-tidy.sh
-step "покрытие C++ ≥ 70%";         scripts/dev.sh scripts/ci/cpp-coverage.sh
+step "покрытие C++ ≥ 70%";         dev_pg scripts/ci/cpp-coverage.sh
 step "миграции PG 16";             scripts/ci/db-migrations.sh
 step "web";                        node_run scripts/ci/web.sh
 step "линтер OpenAPI";             node_run scripts/ci/openapi-lint.sh
