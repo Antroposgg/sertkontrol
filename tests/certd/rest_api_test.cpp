@@ -261,6 +261,15 @@ TEST_F(RestApiTest, AddValidatesBody) {
   auto no_json = as(kAlice, drogon::Post);
   no_json->setBody("number=1");
   expect_problem(drogon::sync_wait(api.add_to_portfolio(no_json)), 400, "invalid_argument");
+  // Вложенность глубже stackLimit jsoncpp — 400, а не исключение и 500.
+  auto deep = as(kAlice, drogon::Post);
+  deep->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+  deep->setBody(std::string(5000, '[') + std::string(5000, ']'));
+  expect_problem(drogon::sync_wait(api.add_to_portfolio(deep)), 400, "invalid_argument");
+  // Корректный JSON без Content-Type: application/json не разбирается (как getJsonObject).
+  auto plain = as(kAlice, drogon::Post);
+  plain->setBody(R"({"number":"RU D-CR.PA08.B.89369/26"})");
+  expect_problem(drogon::sync_wait(api.add_to_portfolio(plain)), 400, "invalid_argument");
   Json::Value bad_sku;
   bad_sku["number"] = "RU D-CR.PA08.B.89369/26";
   bad_sku["sku"] = 5;

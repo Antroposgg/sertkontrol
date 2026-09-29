@@ -38,6 +38,26 @@ Error bad_request(std::string detail) {
   return Error{ErrorCode::kInvalidArgument, std::move(detail)};
 }
 
+/// Тело запроса как JSON без исключений: `HttpRequest::getJsonObject` Drogon 1.8.7 пропускает
+/// `Json::RuntimeError` jsoncpp на вложенности глубже `stackLimit`, и клиент получал 500 вместо 400 (та же
+/// находка, что у fuzz maxapi).
+std::optional<Json::Value> parse_request_json(std::string_view body) noexcept {
+  try {
+    const Json::CharReaderBuilder builder;
+    const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
+    Json::Value out;
+    std::string errs;
+    if (!reader->parse(body.data(), body.data() + body.size(), &out, &errs)) {
+      return std::nullopt;
+    }
+    return out;
+  } catch (const Json::Exception&) {
+    return std::nullopt;  // вложенность глубже stackLimit — ошибка данных клиента
+  } catch (const std::bad_alloc&) {
+    return std::nullopt;
+  }
+}
+
 /// Параметр запроса вне схемы C7 — 400, а не молчаливое игнорирование: опечатка в фильтре (`?stauts=`) иначе
 /// вернула бы весь портфель как «отфильтрованный» (находка schemathesis, АРХ §10 «Интеграция»).
 std::optional<Error> unknown_query_parameter(const drogon::HttpRequestPtr& req,
@@ -221,7 +241,11 @@ drogon::Task<drogon::HttpResponsePtr> RestApi::add_to_portfolio(drogon::HttpRequ
   if (!user) {
     co_return problem_response(user.error());
   }
-  const auto body = req->getJsonObject();
+  // Как `getJsonObject`: тело разбирается только при `Content-Type: application/json`.
+  std::optional<Json::Value> body;
+  if (req->contentType() == drogon::CT_APPLICATION_JSON) {
+    body = parse_request_json(req->body());
+  }
   if (!body || !body->isObject() || !(*body)["number"].isString()) {
     co_return problem_response(bad_request("ожидается JSON {number, sku?, supplier_inn?}"));
   }
