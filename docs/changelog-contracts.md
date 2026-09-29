@@ -5,6 +5,7 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-29 | C4 | `verify::Query::supplier_inn` (необязательный); правила `supplier.match`, `supplier.mismatch`, `supplier.unknown` (расчёт) и `advice.check_supplier` (рекомендация); несовпадение поднимает `ok` → `warning`; fake — упрощённый `supplier.mismatch` | F8: сверка «заявитель = поставщик» (docs/plan.md §8) | 4 |
 | 2026-09-29 | C7 | `openapi.yaml` 1.4.0: `GET /check?number=` принимает ссылку на запись реестра (текст QR), нет записи — `404 not_found_in_snapshot`; в демо-снапшоте ссылка карточки — всегда страница поиска реестра | F10 (docs/plan.md §8) | 4 |
 | 2026-09-29 | C2 | `Snapshot::by_registry_id(id)` → индекс записи; ридер — ленивый отсортированный индекс в памяти (формат файла тот же), `FakeSnapshot` — проход | F10: QR выписки несёт ID записи реестра, а не номер (docs/plan.md §8) | 4 |
 | 2026-09-29 | C7, общие | `openapi.yaml` 1.3.0: `POST /me/consent` (204); операции с данными пользователя отвечают `403 consent_required` без согласия; `cursor`/`id` — до 18 цифр; `supplier_inn` — 10 или 12 цифр. `sk::ErrorCode::kConsentRequired` ↔ web `ProblemCode 'consent_required'` | Согласие на обработку данных (АРХ §10) в мини-приложении, не только в боте; находки schemathesis | 3 |

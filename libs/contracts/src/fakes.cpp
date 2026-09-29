@@ -253,6 +253,14 @@ verify::Verdict check(const snapshot::Snapshot& snap, const verify::Query& query
       v.findings.push_back(
           {Basis::kRecommendation, "advice.request_new", "Запросите у поставщика действующий документ"});
     }
+    // F8 в упрощённом виде: несовпадение ИНН заявителя и поставщика — предупреждение.
+    if (query.supplier_inn && !query.supplier_inn->empty() && !rec.applicant_inn.empty() &&
+        rec.applicant_inn != *query.supplier_inn) {
+      v.findings.push_back({Basis::kCalculation, "supplier.mismatch", "Документ оформлен не на поставщика"});
+      if (v.level == Level::kOk) {
+        v.level = Level::kWarning;
+      }
+    }
     v.card = std::move(card);
     return v;
   }

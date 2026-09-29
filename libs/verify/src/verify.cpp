@@ -47,7 +47,28 @@ std::string days(long n) {
 }
 
 /// Правила статуса и срока для найденной записи (docs/rules.md, разделы «Статус» и «Срок»).
-void apply_rules(const snapshot::RecordView& rec, Date today, Verdict& v) {
+/// Сверка «заявитель = поставщик» (F8, docs/rules.md «Поставщик»). Возвращает `true` при несовпадении.
+bool supplier_rules(const snapshot::RecordView& rec, const std::optional<std::string>& supplier, Verdict& v) {
+  if (!supplier || supplier->empty()) {
+    return false;
+  }
+  if (rec.applicant_inn.empty()) {
+    add(v, Basis::kCalculation, "supplier.unknown",
+        "В реестре нет ИНН заявителя — сверить с поставщиком нельзя");
+    return false;
+  }
+  if (rec.applicant_inn == *supplier) {
+    add(v, Basis::kCalculation, "supplier.match", "Заявитель — ваш поставщик: ИНН " + *supplier);
+    return false;
+  }
+  add(v, Basis::kCalculation, "supplier.mismatch",
+      "Документ оформлен не на поставщика: заявитель — ИНН " + std::string{rec.applicant_inn} +
+          ", поставщик — ИНН " + *supplier);
+  return true;
+}
+
+void apply_rules(const snapshot::RecordView& rec, const Query& query, Verdict& v) {
+  const auto today = query.today;
   // ── Статус (факт) ──
   std::string status_text = "Статус в реестре: " + std::string{status_name(rec.status)};
   if (rec.status == Status::kSuspended && rec.suspended_until) {
@@ -85,6 +106,9 @@ void apply_rules(const snapshot::RecordView& rec, Date today, Verdict& v) {
     }
   }
 
+  // ── Поставщик (расчёт) ──
+  const bool supplier_mismatch = supplier_rules(rec, query.supplier_inn, v);
+
   // ── Уровень и рекомендации ──
   if (rec.status == Status::kActive && !expired) {
     v.level = expiring ? Level::kWarning : Level::kOk;
@@ -114,6 +138,17 @@ void apply_rules(const snapshot::RecordView& rec, Date today, Verdict& v) {
     case Level::kNotFound:
     case Level::kNeedsConfirmation:
       break;
+  }
+  // Несовпадение не делает документ недействительным: поставщик может законно перепродавать товар заявителя,
+  // поэтому это предупреждение с объяснением, а не «проблема» (АРХ §2 F8; юридические заключения — Won't).
+  if (supplier_mismatch) {
+    add(v, Basis::kRecommendation, "advice.check_supplier",
+        "Если поставщик перепродаёт товар заявителя, запросите у него подтверждение цепочки поставки "
+        "(договор, "
+        "УПД); иначе — документ, оформленный на его ИНН");
+    if (v.level == Level::kOk) {
+      v.level = Level::kWarning;
+    }
   }
 }
 
@@ -157,7 +192,7 @@ Verdict check(const snapshot::Snapshot& snap, const Query& query) {
                   // Демо-запись не ведёт на реальную запись реестра, даже если у неё есть ID для поиска по
                   // QR тестовой выписки: её поля вымышлены (data/demo/README.md).
                   .registry_url = registry_url(rec.kind, snap.meta().is_demo ? 0 : rec.registry_id)};
-    apply_rules(rec, query.today, v);
+    apply_rules(rec, query, v);
     return v;
   }
 
