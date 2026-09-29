@@ -41,6 +41,14 @@ jobs:
       - run: scripts/ci/cpp-format-check.sh
       - run: scripts/ci/cpp-tidy.sh
 
+  cpp-clang-tsan:
+    name: C++ · clang 18 ThreadSanitizer
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/cpp-build-test.sh clang-tsan
+
   fuzz:
     name: C++ · fuzz smoke (60 с на цель)
     runs-on: ubuntu-24.04

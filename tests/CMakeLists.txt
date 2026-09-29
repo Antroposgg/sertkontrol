@@ -2,16 +2,20 @@ find_package(GTest CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 include(GoogleTest)
 
-# sk_add_test(<имя> <исходники...> LIBS <цели...>)
+# sk_add_test(<имя> <исходники...> LIBS <цели...> [LABELS <метки...>])
 function(sk_add_test name)
-  cmake_parse_arguments(ARG "" "" "LIBS" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "LIBS;LABELS" ${ARGN})
   add_executable(${name} ${ARG_UNPARSED_ARGUMENTS})
   target_link_libraries(${name} PRIVATE ${ARG_LIBS} GTest::gtest_main GTest::gmock)
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   sk_set_warnings(${name})
   # Тесты не входят в образ; unity склеил бы одноимённые константы разных тестовых файлов.
   set_target_properties(${name} PROPERTIES UNITY_BUILD OFF)
-  gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30)
+  if(ARG_LABELS)
+    gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30 PROPERTIES LABELS "${ARG_LABELS}")
+  else()
+    gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30)
+  endif()
 endfunction()
 
 sk_add_test(contracts_test
@@ -102,3 +106,9 @@ target_compile_definitions(ingest_test PRIVATE
 # Тест демо-пары слушает NOTIFY snapshot_ready напрямую через libpq.
 find_package(PostgreSQL REQUIRED)
 target_link_libraries(ingest_test PRIVATE PostgreSQL::PostgreSQL)
+
+# Конкурентность (АРХ §10): гоняется во всех пресетах; в пресете clang-tsan — только тесты с меткой tsan.
+sk_add_test(concurrency_test
+  concurrency/concurrency_test.cpp
+  LIBS sk::certd_core
+  LABELS tsan)
