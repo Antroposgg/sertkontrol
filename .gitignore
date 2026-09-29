@@ -11,3 +11,5 @@ web/*.tsbuildinfo
 .vscode/
 # Исходные PDF организаторов и архитектуры: в репозитории — их Markdown-версии.
 docs/source/
+.schemathesis/
+schema-coverage.html

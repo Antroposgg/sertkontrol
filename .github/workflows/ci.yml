@@ -108,9 +108,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: scripts/ci/web.sh
+      - run: scripts/ci/openapi-lint.sh
 
   docker:
-    name: Docker · build ≤ 4 мин и compose up
+    name: Docker · build ≤ 4 мин, compose up, контрактные тесты C7
     runs-on: ubuntu-24.04
     env:
       # Зеркало рядом с раннером GitHub (ADR-0011); по умолчанию в образе — зеркало в РФ.
@@ -119,6 +120,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: scripts/ci/docker-build.sh
       - run: scripts/ci/compose-smoke.sh
+      - run: scripts/ci/contract-test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-junit
+          path: build/contract/
+          if-no-files-found: ignore
 
   gitleaks:
     name: Секреты · gitleaks
