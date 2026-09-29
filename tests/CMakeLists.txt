@@ -52,7 +52,7 @@ sk_add_test(maxapi_test
   LIBS sk::maxapi OpenSSL::Crypto)
 target_compile_definitions(maxapi_test PRIVATE SK_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
-# Настоящий TLS: openssl s_server с самоподписанным сертификатом (ADR-0014).
+# Настоящий TLS: openssl s_server с самоподписанным сертификатом (ADR-0015).
 sk_add_test(maxapi_tls_test
   maxapi/tls_test.cpp
   LIBS sk::maxapi)
