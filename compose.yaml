@@ -61,6 +61,8 @@ services:
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
       MAX_BOT_USERNAME: ${MAX_BOT_USERNAME:-}
+      # Домен — для команды подписки webhook из README («Развёртывание на VPS»).
+      SK_DOMAIN: ${SK_DOMAIN:-}
       MAX_API_BASE_URL: ${MAX_API_BASE_URL:-https://platform-api2.max.ru}
       # Локально без MAX мини-приложение открывается в браузере от этого пользователя.
       # С MAX_BOT_TOKEN игнорируется — вход только по initData (ADR-0013).
