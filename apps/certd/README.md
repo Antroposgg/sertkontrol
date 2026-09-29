@@ -31,6 +31,8 @@
 | `recognition_pool.*` | Пул потоков распознавания с ограниченной очередью (ADR-0004) |
 | `rate_limiter.*` | 30 проверок в минуту на пользователя (АРХ §10) |
 | `media.*`, `clock.hpp` | Тип файла по сигнатуре; «сегодня» по Москве |
+| `csv_import.*` | `parse_import_csv`: CSV «SKU; номер; ИНН» (`;`/`,`, RFC 4180, BOM, заголовок), лимиты 1 МБ и 1000 строк; без Drogon — его гоняет `fuzz_import_csv` |
+| `import_report.*` | Отчёт импорта из результатов постановки строк (общий для домена и фейка) |
 | `registry_link.*` | `number_by_registry_link`: номер записи по ссылке реестра из QR (F10); `check_text` проверяет ссылку раньше номеров |
 | `bot_identity.*` | `resolve_bot_username`: username бота для `web_app` из `GET /me`; неверный `web_app` MAX отвергает всё сообщение (HTTP 404 `Link not found`) |
 | `config.*`, `health.*`, `main.cpp` | Конфигурация из окружения, `/healthz`, сборка компонентов, `LISTEN`, таймеры фоновых циклов |
