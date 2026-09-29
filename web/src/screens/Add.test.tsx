@@ -128,4 +128,26 @@ describe('Добавить — «Это номер …?»', () => {
       delete window.WebApp;
     }
   });
+
+  it('F8: ИНН поставщика уходит в постановку, итог сверки — под карточкой', async () => {
+    const mismatch = {
+      ...verdict,
+      level: 'warning' as const,
+      findings: [
+        ...verdict.findings,
+        { basis: 'calculation' as const, rule: 'supplier.mismatch', text: 'Документ оформлен не на поставщика: заявитель — ИНН 7700000016, поставщик — ИНН 7700000023' },
+        { basis: 'recommendation' as const, rule: 'advice.check_supplier', text: 'Запросите подтверждение цепочки поставки' },
+      ],
+    };
+    const api = fakeApi({ addToPortfolio: vi.fn(() => Promise.resolve({ item: {} as never, verdict: mismatch })) });
+    renderWithApi(<Add />, api);
+    await userEvent.type(screen.getByLabelText('Номер документа'), 'RU Д-CR.PA08.B.89369/26');
+    await userEvent.type(screen.getByLabelText('ИНН поставщика (необязательно)'), ' 7700000023 ');
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'На контроль' }));
+    expect(api.addToPortfolio).toHaveBeenCalledWith({ number: 'RUD-CR.PA08.B.89369/26', supplier_inn: '7700000023' });
+    const notes = await screen.findByRole('list', { name: 'Сверка с поставщиком' });
+    expect(notes).toHaveTextContent('заявитель — ИНН 7700000016, поставщик — ИНН 7700000023');
+    expect(notes).toHaveTextContent('подтверждение цепочки поставки');
+  });
 });
