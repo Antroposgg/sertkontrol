@@ -49,6 +49,19 @@ jobs:
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/cpp-build-test.sh clang-tsan
 
+  bench:
+    name: C++ · бенчмарки против целей АРХ §2
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/bench.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-report
+          path: build/bench/report.json
+
   fuzz:
     name: C++ · fuzz smoke (60 с на цель)
     runs-on: ubuntu-24.04
