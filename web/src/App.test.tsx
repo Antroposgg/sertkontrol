@@ -23,7 +23,7 @@ describe('App', () => {
 
   it('переключает экраны', async () => {
     renderApp();
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Портфель');
+    expect(await screen.findByRole('heading', { level: 2 })).toHaveTextContent('Портфель');
     for (const s of SCREENS) {
       await userEvent.click(screen.getByRole('button', { name: s.title }));
       expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(s.title);
@@ -37,6 +37,17 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Документ');
     expect(screen.getByLabelText('Номер документа')).toHaveValue('RU Д-CR.PA08.B.89369/26');
     expect(await screen.findByText(/действует → приостановлен/)).toBeInTheDocument();
+  });
+
+  it('«Подробнее» из бота открывает документ', async () => {
+    window.WebApp = { initDataUnsafe: { start_param: 'doc-52552f31' } };
+    try {
+      renderApp();
+      expect(await screen.findByRole('heading', { level: 2 })).toHaveTextContent('Документ');
+      expect(await screen.findByDisplayValue('RU/1')).toBeInTheDocument();
+    } finally {
+      delete window.WebApp;
+    }
   });
 
   it('без провайдера API — понятная ошибка', () => {

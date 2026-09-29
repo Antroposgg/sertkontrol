@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -341,6 +343,15 @@ TEST(Card, EscapesHtmlInData) {
   const auto m = verdict_card(1, cv, {});
   EXPECT_NE(m.text.find("ООО &lt;b&gt;&quot;Х&amp;Y&quot;&lt;/b&gt;"), std::string::npos);
   EXPECT_EQ(m.buttons.size(), 1U);  // без ссылки https и без open_app
+}
+
+TEST(Card, DocumentStartParamFitsMaxLimits) {
+  const auto p = document_start_param("RUC-RU.AЯ46.B.10005/24");
+  EXPECT_EQ(p.substr(0, 4), "doc-");
+  EXPECT_EQ(document_start_param("RU/1"), "doc-52552f31");
+  EXPECT_TRUE(
+      std::ranges::all_of(p, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-'; }));
+  EXPECT_LE(document_start_param(std::string(40, 'A')).size(), 512U);
 }
 
 TEST(Card, NeedsConfirmationAsksQuestion) {

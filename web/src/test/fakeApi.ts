@@ -81,6 +81,7 @@ export function fakeApi(overrides: Partial<SertkontrolApi> = {}): SertkontrolApi
     me: vi.fn(() =>
       Promise.resolve({ max_user_id: 1, portfolio_count: 1, is_demo: true, demo_stage: 'base' as const, consented: true }),
     ),
+    consent: vi.fn(() => Promise.resolve()),
     check: vi.fn(() => Promise.resolve(verdict)),
     checkFile: vi.fn(() => Promise.resolve([verdict])),
     listPortfolio: vi.fn(() => Promise.resolve(page)),

@@ -93,6 +93,17 @@ OutgoingMessage help(std::int64_t user, const CardOptions& options) {
   return m;
 }
 
+std::string document_start_param(std::string_view number) {
+  static constexpr std::string_view kHex = "0123456789abcdef";
+  std::string out = "doc-";
+  for (const char c : number) {
+    const auto b = static_cast<unsigned char>(c);
+    out += kHex[b >> 4U];
+    out += kHex[b & 0x0FU];
+  }
+  return out;
+}
+
 OutgoingMessage confirm_question(std::int64_t user, const CheckedVerdict& cv) {
   const auto& v = cv.verdict;
   const auto& best = v.suggestions.front();
@@ -166,7 +177,7 @@ OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& cv, const 
     row.push_back({.kind = Button::Kind::kLink, .text = "Открыть в реестре", .url = v.card->registry_url});
   }
   if (options.open_app && cv.check_id > 0) {
-    row.push_back(open_app("Подробнее", "check-" + std::to_string(cv.check_id)));
+    row.push_back(open_app("Подробнее", document_start_param(v.number)));
   }
   if (!row.empty()) {
     m.buttons.push_back(std::move(row));

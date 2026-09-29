@@ -1,8 +1,9 @@
 import { MaxUI } from '@maxhub/max-ui';
 import { useState } from 'react';
 
+import { ConsentGate } from './components/ConsentGate';
 import { DemoBadge } from './components/DemoBadge';
-import { getWebApp } from './max/bridge';
+import { getStartTarget, getWebApp } from './max/bridge';
 import { Add } from './screens/Add';
 import { Data } from './screens/Data';
 import { Document } from './screens/Document';
@@ -32,8 +33,10 @@ function platform(): 'ios' | 'android' {
 
 /** Оболочка мини-приложения: навигация по экранам и пометка тестовых данных. */
 export function App() {
-  const [screen, setScreen] = useState<ScreenId>('portfolio');
-  const [documentNumber, setDocumentNumber] = useState('');
+  // Кнопка бота «Подробнее» открывает сразу нужный документ (`start_param`).
+  const [start] = useState(() => getStartTarget());
+  const [screen, setScreen] = useState<ScreenId>(start?.screen ?? 'portfolio');
+  const [documentNumber, setDocumentNumber] = useState(start?.screen === 'document' ? start.number : '');
   const current = SCREENS.find((s) => s.id === screen) ?? SCREENS[0];
   const Content = CONTENT[current.id];
 
@@ -44,30 +47,32 @@ export function App() {
           <h1>Сертконтроль</h1>
           <DemoBadge />
         </header>
-        <nav aria-label="Разделы">
-          {SCREENS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={s.id === screen ? 'page' : undefined}
-              onClick={() => {
-                setScreen(s.id);
+        <ConsentGate>
+          <nav aria-label="Разделы">
+            {SCREENS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-current={s.id === screen ? 'page' : undefined}
+                onClick={() => {
+                  setScreen(s.id);
+                }}
+              >
+                {s.title}
+              </button>
+            ))}
+          </nav>
+          <section aria-labelledby="screen-title">
+            <h2 id="screen-title">{current.title}</h2>
+            <Content
+              documentNumber={documentNumber}
+              openDocument={(number) => {
+                setDocumentNumber(number);
+                setScreen('document');
               }}
-            >
-              {s.title}
-            </button>
-          ))}
-        </nav>
-        <section aria-labelledby="screen-title">
-          <h2 id="screen-title">{current.title}</h2>
-          <Content
-            documentNumber={documentNumber}
-            openDocument={(number) => {
-              setDocumentNumber(number);
-              setScreen('document');
-            }}
-          />
-        </section>
+            />
+          </section>
+        </ConsentGate>
       </main>
     </MaxUI>
   );

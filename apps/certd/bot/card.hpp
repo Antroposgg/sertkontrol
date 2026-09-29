@@ -30,6 +30,9 @@ struct CardOptions {
 /// «Факт / Расчёт / Рекомендация» (F3).
 [[nodiscard]] maxapi::OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& v,
                                                    const CardOptions& options);
+/// Параметр запуска мини-приложения для экрана «Документ»: `doc-` + hex UTF-8 номера. В `start_param` MAX
+/// допускает только `[\w-]{0,512}`, а в номере есть `.` и `/` (номер ≤ 40 символов → ≤ 164 символа).
+[[nodiscard]] std::string document_start_param(std::string_view number);
 /// Вопрос «Это номер …?» с кнопками `[Да] [Ввести вручную]` (`y:`/`n:` + id проверки, АРХ §8).
 [[nodiscard]] maxapi::OutgoingMessage confirm_question(std::int64_t user, const CheckedVerdict& v);
 /// Просьба прислать номер текстом после «Ввести вручную».

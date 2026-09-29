@@ -17,6 +17,8 @@ import type {
 /** Методы API мини-приложения. */
 export interface SertkontrolApi {
   me: () => Promise<Me>;
+  /** Согласие на обработку данных (`POST /me/consent`); без него REST отвечает `403 consent_required`. */
+  consent: () => Promise<void>;
   check: (number: string) => Promise<CheckedVerdict>;
   checkFile: (file: File) => Promise<CheckedVerdict[]>;
   listPortfolio: (filter: PortfolioFilter) => Promise<PortfolioPage>;
@@ -35,6 +37,7 @@ export interface SertkontrolApi {
 export function createSertkontrolApi(client: ApiClient): SertkontrolApi {
   return {
     me: () => client.get<Me>('/me'),
+    consent: () => client.postEmpty('/me/consent'),
     check: (number) => client.get<CheckedVerdict>(`/check?${new URLSearchParams({ number }).toString()}`),
     checkFile: (file) => {
       const form = new FormData();
