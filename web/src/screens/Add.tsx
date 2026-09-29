@@ -7,12 +7,14 @@ import type { CheckedVerdict } from '../api/types';
 import { StateView, type ViewState } from '../components/StateView';
 import { VerdictCard } from '../components/VerdictCard';
 import { toProblemOf } from '../hooks/useResource';
+import { canScanQr, scanQr } from '../max/bridge';
 
 type Result = ViewState<CheckedVerdict[]> | { kind: 'idle' };
 
 /**
- * Экран «Добавить»: проверка номера или PDF-выписки (F1–F3) и постановка на контроль (F4).
- * Загрузка файла работает везде; сканер QR камерой (`openCodeReader`, F10) — этап 4.
+ * Экран «Добавить»: проверка номера, PDF-выписки или QR (F1–F3, F10) и постановка на контроль (F4).
+ * Загрузка файла работает везде; сканер QR (`openCodeReader`) — только в мобильных клиентах MAX. Текст QR — обычно
+ * ссылка на запись реестра — уходит в ту же проверку `GET /check`: сервер находит документ по ID записи.
  */
 export function Add() {
   const api = useApi();
@@ -95,6 +97,18 @@ export function Add() {
           }}
         />
       </label>
+      {canScanQr() && (
+        <Button
+          variant="secondary"
+          onClick={() => {
+            void scanQr().then((text) => {
+              if (text !== undefined) run(() => api.check(text).then((v) => [v]));
+            });
+          }}
+        >
+          Сканировать QR с выписки
+        </Button>
+      )}
       {result.kind !== 'idle' && (
         <StateView state={result} emptyText="В файле не найдено номеров." onRetry={() => lastRun?.()}>
           {(verdicts) => (

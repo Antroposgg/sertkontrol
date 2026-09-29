@@ -16,6 +16,11 @@ export interface MaxWebApp {
   initDataUnsafe?: { start_param?: string };
   /** Открыть внешнюю ссылку средствами MAX (dev.max.ru/docs/webapps/bridge). */
   openLink?: (url: string) => void;
+  /**
+   * Сканер QR (dev.max.ru/docs/webapps/bridge): `fileSelect=true` — камера или файл из галереи; результат —
+   * содержимое кода. Только iOS и Android: «not supported on desktop and web clients».
+   */
+  openCodeReader?: (fileSelect?: boolean) => Promise<string>;
 }
 
 declare global {
@@ -88,4 +93,32 @@ export function parseStartParam(param: string | undefined): StartTarget | undefi
  */
 export function getStartTarget(win: Window = window): StartTarget | undefined {
   return parseStartParam(getWebApp(win)?.initDataUnsafe?.start_param);
+}
+
+/**
+ * Можно ли сканировать QR камерой (F10): только мобильные клиенты MAX, где есть `openCodeReader`.
+ * На вебе и десктопе метод не поддержан — кнопка скрыта, работает загрузка PDF (АРХ §2, F10).
+ * @param win окно (инъекция для тестов).
+ */
+export function canScanQr(win: Window = window): boolean {
+  const app = getWebApp(win);
+  return (app?.platform === 'ios' || app?.platform === 'android') && typeof app.openCodeReader === 'function';
+}
+
+/**
+ * Открывает сканер QR MAX. Возвращает содержимое кода или `undefined`, если сканер недоступен или закрыт без
+ * результата: документация MAX не описывает ошибки промиса, поэтому любой отказ считается отменой.
+ * @param win окно (инъекция для тестов).
+ */
+export async function scanQr(win: Window = window): Promise<string | undefined> {
+  const read = canScanQr(win) ? getWebApp(win)?.openCodeReader : undefined;
+  if (read === undefined) {
+    return undefined;
+  }
+  try {
+    const text = (await read(true)).trim();
+    return text === '' ? undefined : text;
+  } catch {
+    return undefined;
+  }
 }

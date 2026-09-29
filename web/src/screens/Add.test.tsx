@@ -103,4 +103,29 @@ describe('Добавить — «Это номер …?»', () => {
     expect(check).toHaveBeenLastCalledWith('RUD-CR.PA08.B.89369/26');
     expect(await screen.findByRole('button', { name: 'На контроль' })).toBeInTheDocument();
   });
+
+  it('на телефоне в MAX — «Сканировать QR»: текст кода уходит в проверку', async () => {
+    const qr = 'https://pub.fsa.gov.ru/rds/declaration/view/21950326/common';
+    window.WebApp = { platform: 'android', openCodeReader: () => Promise.resolve(qr) };
+    try {
+      const api = fakeApi();
+      renderWithApi(<Add />, api);
+      await userEvent.click(screen.getByRole('button', { name: 'Сканировать QR с выписки' }));
+      expect(api.check).toHaveBeenCalledWith(qr);
+      expect(await screen.findByRole('article')).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26');
+    } finally {
+      delete window.WebApp;
+    }
+  });
+
+  it('в вебе кнопки сканера нет — только загрузка PDF', () => {
+    window.WebApp = { platform: 'web' };
+    try {
+      renderWithApi(<Add />, fakeApi());
+      expect(screen.queryByRole('button', { name: /Сканировать QR/ })).not.toBeInTheDocument();
+      expect(screen.getByLabelText('PDF-выписка')).toBeInTheDocument();
+    } finally {
+      delete window.WebApp;
+    }
+  });
 });
