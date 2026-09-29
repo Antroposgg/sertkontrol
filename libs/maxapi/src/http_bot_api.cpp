@@ -1,13 +1,15 @@
-#include <drogon/HttpClient.h>
-#include <drogon/HttpRequest.h>
-#include <drogon/HttpResponse.h>
+#include <drogon/utils/coroutine.h>
 
+#include <algorithm>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <utility>
 
 #include <json/json.h>
+#include <trantor/net/EventLoopThreadPool.h>
 
+#include "curl_http.hpp"
 #include "sertkontrol/maxapi/auth.hpp"
 #include "sertkontrol/maxapi/bot_api.hpp"
 
@@ -51,33 +53,65 @@ std::optional<SplitUrl> split_url(std::string_view url) {
                   .path = path_start == std::string_view::npos ? "/" : std::string{url.substr(path_start)}};
 }
 
-HttpBotApi::HttpBotApi(BotApiConfig config) : config_(std::move(config)) {
+struct HttpBotApi::Impl {
+  explicit Impl(std::size_t threads) : pool(threads, "maxapi-http") { pool.start(); }
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
+  Impl(Impl&&) = delete;
+  Impl& operator=(Impl&&) = delete;
+  ~Impl() {
+    for (auto* loop : pool.getLoops()) {
+      loop->quit();
+    }
+    pool.wait();
+  }
+
+  /// Блокирующий запрос в пуле; корутина ждёт через co_await и продолжается на потоке пула.
+  drogon::Task<detail::HttpResponse> run(detail::HttpRequest request) {
+    std::function<detail::HttpResponse()> task = [request = std::move(request)] {
+      return detail::perform(request);
+    };
+    co_return co_await drogon::queueInLoopCoro<detail::HttpResponse>(pool.getNextLoop(), std::move(task));
+  }
+
+  trantor::EventLoopThreadPool pool;
+};
+
+HttpBotApi::HttpBotApi(BotApiConfig config)
+    : config_(std::move(config)), impl_(std::make_unique<Impl>(std::max<std::size_t>(1, config_.threads))) {
+}
+
+HttpBotApi::~HttpBotApi() = default;
+
+bool HttpBotApi::tls_available() noexcept {
+  return detail::tls_available();
 }
 
 drogon::Task<Result<Ok>> HttpBotApi::post(std::string path_and_query, std::string body) const {
-  auto client = drogon::HttpClient::newHttpClient(config_.base_url);
-  auto req = drogon::HttpRequest::newHttpRequest();
-  req->setMethod(drogon::Post);
-  req->setPathEncode(false);  // query уже закодирован
-  req->setPath(path_and_query);
-  req->addHeader("Authorization", config_.token);
-  req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
-  req->setBody(std::move(body));
-  drogon::HttpResponsePtr resp;
-  try {
-    resp = co_await client->sendRequestCoro(req, config_.timeout_seconds);
-  } catch (const std::exception& e) {
-    co_return Error{ErrorCode::kInternal, std::string{"MAX API недоступен: "} + e.what()};
+  detail::HttpRequest req{.method = "POST",
+                          .url = config_.base_url + path_and_query,
+                          .headers = {"Authorization: " + config_.token, "Content-Type: application/json"},
+                          .body = std::move(body),
+                          .timeout_seconds = config_.timeout_seconds,
+                          .max_response_bytes = std::size_t{1024} * 1024,
+                          // http:// — только если так задан base_url (тесты с локальным сервером).
+                          .allow_http = config_.base_url.starts_with("http://"),
+                          .ca_file = config_.ca_file};
+  const auto resp = co_await impl_->run(std::move(req));
+  if (resp.status == 0) {
+    co_return Error{ErrorCode::kInternal, "MAX API недоступен: " + resp.error};
   }
-  const auto status = static_cast<int>(resp->getStatusCode());
-  const std::string resp_body{resp->getBody()};
-  if (status != 200) {
-    co_return from_status(status, resp_body);
+  if (resp.status != 200) {
+    co_return from_status(static_cast<int>(resp.status), resp.body);
   }
   // `/answers` отвечает 200 и `success: false` при логической ошибке.
-  if (const auto json = resp->getJsonObject();
-      json && json->isMember("success") && !(*json)["success"].asBool()) {
-    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + (*json)["message"].asString()};
+  Json::Value json;
+  const Json::CharReaderBuilder builder;
+  std::string errs;
+  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
+  if (reader->parse(resp.body.data(), resp.body.data() + resp.body.size(), &json, &errs) && json.isObject() &&
+      json.isMember("success") && !json["success"].asBool()) {
+    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + json["message"].asString()};
   }
   co_return Ok{};
 }
@@ -104,27 +138,24 @@ drogon::Task<Result<std::vector<std::byte>>> HttpBotApi::download(std::string ur
   if (!split || (!config_.allow_http_downloads && !url.starts_with("https://"))) {
     co_return Error{ErrorCode::kInvalidArgument, "вложение: недопустимый URL"};
   }
-  auto client = drogon::HttpClient::newHttpClient(split->origin);
-  auto req = drogon::HttpRequest::newHttpRequest();
-  req->setMethod(drogon::Get);
-  req->setPathEncode(false);
-  req->setPath(split->path);
-  drogon::HttpResponsePtr resp;
-  try {
-    resp = co_await client->sendRequestCoro(req, config_.timeout_seconds);
-  } catch (const std::exception& e) {
-    co_return Error{ErrorCode::kInternal, std::string{"вложение не скачалось: "} + e.what()};
-  }
-  const auto status = static_cast<int>(resp->getStatusCode());
-  if (status != 200) {
-    co_return from_status(status, "вложение");
-  }
-  const auto body = resp->getBody();
-  if (body.size() > max_bytes) {
+  detail::HttpRequest req{.url = std::move(url),
+                          .timeout_seconds = config_.timeout_seconds,
+                          .max_response_bytes = max_bytes,
+                          .allow_http = config_.allow_http_downloads,
+                          .follow_redirects = true,
+                          .ca_file = config_.ca_file};
+  const auto resp = co_await impl_->run(std::move(req));
+  if (resp.too_large) {
     co_return Error{ErrorCode::kFileTooLarge, "вложение больше лимита"};
   }
-  std::vector<std::byte> out(body.size());
-  std::memcpy(out.data(), body.data(), body.size());
+  if (resp.status == 0) {
+    co_return Error{ErrorCode::kInternal, "вложение не скачалось: " + resp.error};
+  }
+  if (resp.status != 200) {
+    co_return from_status(static_cast<int>(resp.status), "вложение");
+  }
+  std::vector<std::byte> out(resp.body.size());
+  std::memcpy(out.data(), resp.body.data(), resp.body.size());
   co_return out;
 }
 
