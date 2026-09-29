@@ -7,6 +7,8 @@
 
 #include <json/json.h>
 
+#include "json_parse.hpp"
+
 namespace sk::maxapi {
 
 namespace {
@@ -163,13 +165,10 @@ std::string to_outbox_json(const OutgoingMessage& msg) {
 Result<OutgoingMessage> from_outbox_json(std::string_view json) {
   // Строка приходит из БД: типы проверяются до чтения — `as*()` jsoncpp бросает на несовпадении типа.
   Json::Value v;
-  const Json::CharReaderBuilder builder;
-  std::string errs;
-  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
-  if (!reader->parse(json.data(), json.data() + json.size(), &v, &errs) || !v.isObject() ||
-      !v["version"].isInt64() || v["version"].asInt64() != 1 || !v["max_user_id"].isInt64() ||
-      !v["text"].isString() || !(v["is_demo"].isNull() || v["is_demo"].isBool()) ||
-      !(v["kind"].isNull() || v["kind"].isString()) || !(v["buttons"].isNull() || v["buttons"].isArray())) {
+  if (!detail::parse_json(json, v) || !v.isObject() || !v["version"].isInt64() ||
+      v["version"].asInt64() != 1 || !v["max_user_id"].isInt64() || !v["text"].isString() ||
+      !(v["is_demo"].isNull() || v["is_demo"].isBool()) || !(v["kind"].isNull() || v["kind"].isString()) ||
+      !(v["buttons"].isNull() || v["buttons"].isArray())) {
     return invalid_message("строка outbox не соответствует C9 v1");
   }
   OutgoingMessage m;

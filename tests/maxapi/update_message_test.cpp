@@ -66,6 +66,14 @@ TEST(Update, NumbersOutOfRangeDoNotThrow) {
   EXPECT_EQ(std::get<OtherUpdate>(u.value()).timestamp, 0);
 }
 
+// Находка fuzz: jsoncpp бросает Json::RuntimeError на вложенности глубже stackLimit — должна быть ошибка
+// разбора.
+TEST(Update, DeepNestingIsInvalidNotThrow) {
+  const std::string deep = std::string(5000, '[') + std::string(5000, ']');
+  EXPECT_FALSE(parse_update(deep).has_value());
+  EXPECT_FALSE(from_outbox_json(deep).has_value());
+}
+
 TEST(Update, OtherAndInvalid) {
   const auto o = parse_update(R"({"update_type":"dialog_muted","timestamp":5})");
   ASSERT_TRUE(o.has_value());

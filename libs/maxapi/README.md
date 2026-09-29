@@ -1,6 +1,7 @@
 # libs/maxapi — Bot API MAX, initData, события, C9 (владелец R4)
 
-**Статус:** этап 3 — разбор JSON событий, outbox и ответов API без исключений на неожиданных типах (находки fuzz:
+**Статус:** этап 3 — разбор JSON событий, outbox и ответов API без исключений на неожиданных типах и на вложенности глубже
+`stackLimit` jsoncpp (`src/json_parse.hpp`; находки fuzz:
 `fuzz_update_json`, `fuzz_outbox_json`, `fuzz_init_data`). Этап 2 — initData, секрет webhook, разбор `Update`, C9 `OutgoingMessage`, HTTP-клиент, двухуровневый лимитер исходящих (АРХ §7.6).
 
 ## Назначение и границы

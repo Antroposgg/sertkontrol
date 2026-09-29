@@ -10,6 +10,7 @@
 #include <trantor/net/EventLoopThreadPool.h>
 
 #include "curl_http.hpp"
+#include "json_parse.hpp"
 #include "sertkontrol/maxapi/auth.hpp"
 #include "sertkontrol/maxapi/bot_api.hpp"
 
@@ -106,11 +107,8 @@ drogon::Task<Result<Ok>> HttpBotApi::post(std::string path_and_query, std::strin
   }
   // `/answers` отвечает 200 и `success: false` при логической ошибке.
   Json::Value json;
-  const Json::CharReaderBuilder builder;
-  std::string errs;
-  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
-  if (reader->parse(resp.body.data(), resp.body.data() + resp.body.size(), &json, &errs) && json.isObject() &&
-      json["success"].isBool() && !json["success"].asBool()) {
+  if (detail::parse_json(resp.body, json) && json.isObject() && json["success"].isBool() &&
+      !json["success"].asBool()) {
     std::string message = "без пояснения";
     if (json["message"].isString()) {
       message = json["message"].asString();

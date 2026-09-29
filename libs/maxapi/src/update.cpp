@@ -4,6 +4,8 @@
 
 #include <json/json.h>
 
+#include "json_parse.hpp"
+
 namespace sk::maxapi {
 
 namespace {
@@ -82,11 +84,7 @@ Result<Update> parse_bot_started(const Json::Value& root) {
 
 Result<Update> parse_update(std::string_view json) {
   Json::Value root;
-  const Json::CharReaderBuilder builder;
-  std::string errs;
-  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
-  if (!reader->parse(json.data(), json.data() + json.size(), &root, &errs) || !root.isObject() ||
-      !field(root, "update_type").isString()) {
+  if (!detail::parse_json(json, root) || !root.isObject() || !field(root, "update_type").isString()) {
     return invalid_update("не JSON-объект с update_type");
   }
   const auto type = field(root, "update_type").asString();
