@@ -20,7 +20,7 @@
 | `include/sertkontrol/maxapi/fake_bot_api.hpp` | `RecordingBotApi` — для тестов бота и outbox |
 
 ## Факты MAX API, на которые опирается модуль
-Сверены 26.09.2026 с dev.max.ru и `schema.yaml` официального Go-клиента — таблица в [docs/plan.md §5.1](../../docs/plan.md). Главное: `https://platform-api2.max.ru`, токен в `Authorization`, TLS на сертификате Минцифры ([ADR-0012](../../docs/adr/0012-mintsifry-root-ca.md)), `text ≤ 4000`, `callback.payload ≤ 1024`, `open_app` требует `web_app`.
+Сверены 26.09.2026 с dev.max.ru и `schema.yaml` официального Go-клиента — таблица в [docs/plan.md §5.1](../../docs/plan.md). Главное: `https://platform-api2.max.ru`, токен в `Authorization`, TLS на сертификате Минцифры ([ADR-0012](../../docs/adr/0012-mintsifry-root-ca.md)), `text ≤ 4000`, `callback.payload ≤ 1024`, `open_app` требует `web_app` — username бота («Unique public name of the bot wired to the mini app»), его возвращает `BotApi::get_me` (`GET /me`, `parse_bot_info`).
 
 ## Зависимости
 - Зависит от: `sk::contracts`, Drogon (корутины, jsoncpp), libcurl (исходящий HTTPS, ADR-0015), OpenSSL.

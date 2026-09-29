@@ -8,6 +8,7 @@
 #include <drogon/utils/coroutine.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -18,6 +19,17 @@
 #include "sertkontrol_contracts.hpp"
 
 namespace sk::maxapi {
+
+/// Данные бота из `GET /me` (`BotInfo` в `schema.yaml` официального Go-клиента MAX).
+struct BotInfo {
+  std::int64_t user_id{0};
+  /// «Unique public user name»; `nullopt`, если не задан. Именно его ждёт `web_app` кнопки `open_app`
+  /// («Unique public name of the bot wired to the mini app»), а не отображаемое имя бота.
+  std::optional<std::string> username{};
+};
+
+/// Разбор ответа `GET /me`: объект с целым `user_id`; `username` — строка или `null`.
+[[nodiscard]] Result<BotInfo> parse_bot_info(std::string_view json);
 
 /// Ошибки: `kRateLimited` (429), `kInternal` (5xx, сеть, таймаут — можно повторить), `kUnauthorized` (401),
 /// `kInvalidArgument` (прочие 4xx или `success: false`), `kFileTooLarge` (вложение больше лимита).
@@ -30,6 +42,8 @@ class BotApi {
   BotApi& operator=(BotApi&&) = delete;
   virtual ~BotApi() = default;
 
+  /// `GET /me` — данные самого бота (username для кнопок `open_app`).
+  virtual drogon::Task<Result<BotInfo>> get_me() = 0;
   /// `POST /messages?user_id=`.
   virtual drogon::Task<Result<Ok>> send_message(OutgoingMessage msg) = 0;
   /// `POST /answers?callback_id=` с одноразовым уведомлением пользователю.
@@ -63,6 +77,7 @@ class HttpBotApi final : public BotApi {
 
   /// libcurl собран с TLS — без этого бот не может обращаться к `https://platform-api2.max.ru`.
   [[nodiscard]] static bool tls_available() noexcept;
+  drogon::Task<Result<BotInfo>> get_me() override;
   drogon::Task<Result<Ok>> send_message(OutgoingMessage msg) override;
   drogon::Task<Result<Ok>> answer_callback(std::string callback_id, std::string notification) override;
   drogon::Task<Result<std::vector<std::byte>>> download(std::string url, std::size_t max_bytes) override;

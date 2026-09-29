@@ -6,7 +6,7 @@
 |---|---|---|
 | `fuzz_canon` | `canonicalize`, `parse`, `find_numbers` (C1) | канонизация идемпотентна; `parse` согласован; `find_numbers` возвращает только канонизируемое |
 | `fuzz_snapshot_reader` | `open_snapshot` на битых файлах (C2); XXH3 пересчитывается, чтобы доходить до структурных проверок | открытый снапшот читается целиком |
-| `fuzz_update_json` | `parse_update` — тело webhook MAX | — |
+| `fuzz_update_json` | `parse_update` — тело webhook MAX; `parse_bot_info` — ответ `GET /me` | — |
 | `fuzz_init_data` | `validate_init_data`, `percent_decode` | — |
 | `fuzz_outbox_json` | строка outbox (C9) → лимиты MAX → `NewMessageBody` | — |
 | `fuzz_demo_tsv` | парсер источника (C3): `DemoTsvSource` + нормализация | — |
