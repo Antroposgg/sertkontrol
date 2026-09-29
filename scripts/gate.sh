@@ -11,7 +11,10 @@ step "запреты импорта";            scripts/ci/deps-check.sh
 step "clang-format";               scripts/dev.sh scripts/ci/cpp-format-check.sh
 step "GCC 13 Release + тесты ×2";  scripts/dev.sh scripts/ci/cpp-build-test.sh gcc-release
 step "clang 18 ASan/UBSan + тесты ×2"; scripts/dev.sh scripts/ci/cpp-build-test.sh clang-asan
-step "clang 18 TSan + тесты ×2";   scripts/dev.sh scripts/ci/cpp-build-test.sh clang-tsan
+# TSan clang 18 при vm.mmap_rnd_bits > 28 перезапускает процесс с personality(ADDR_NO_RANDOMIZE), а seccomp-профиль
+# Docker по умолчанию этот вызов запрещает. Профиль снимается только у этого одноразового контейнера; в CI TSan идёт на раннере.
+step "clang 18 TSan + тесты ×2";   SK_DEV_DOCKER_ARGS="--security-opt seccomp=unconfined" \
+                                   scripts/dev.sh scripts/ci/cpp-build-test.sh clang-tsan
 step "fuzz smoke 60 с на цель";    scripts/dev.sh scripts/ci/fuzz-smoke.sh
 step "бенчмарки против АРХ §2";    scripts/dev.sh scripts/ci/bench.sh
 step "clang-tidy";                 scripts/dev.sh scripts/ci/cpp-tidy.sh
