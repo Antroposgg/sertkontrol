@@ -5,6 +5,7 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-29 | C2 | `Snapshot::by_registry_id(id)` → индекс записи; ридер — ленивый отсортированный индекс в памяти (формат файла тот же), `FakeSnapshot` — проход | F10: QR выписки несёт ID записи реестра, а не номер (docs/plan.md §8) | 4 |
 | 2026-09-29 | C7, общие | `openapi.yaml` 1.3.0: `POST /me/consent` (204); операции с данными пользователя отвечают `403 consent_required` без согласия; `cursor`/`id` — до 18 цифр; `supplier_inn` — 10 или 12 цифр. `sk::ErrorCode::kConsentRequired` ↔ web `ProblemCode 'consent_required'` | Согласие на обработку данных (АРХ §10) в мини-приложении, не только в боте; находки schemathesis | 3 |
 | 2026-09-29 | C7 | `openapi.yaml` 1.2.0: описания тегов, link `POST /portfolio` → `DELETE /portfolio/{id}`; ответы 405 несут `Allow` (RFC 9110) | Линтер @redocly/cli и контрактные тесты schemathesis (АРХ §10) | 3 |
 | 2026-09-29 | C6 | `DomainService::confirm(user, check_id)` → `CheckResult` | «Это номер …?» → «Да» (АРХ §4, поток A, шаг 6); кнопки `y:`/`n:` уже в C9 | 3 |

@@ -194,6 +194,18 @@ std::vector<std::uint32_t> FakeSnapshot::by_serial(std::string_view serial, std:
   return out;
 }
 
+std::optional<std::uint32_t> FakeSnapshot::by_registry_id(std::uint64_t registry_id) const {
+  if (registry_id == 0) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0; i < records_.size(); ++i) {
+    if (records_[i].registry_id == registry_id) {
+      return static_cast<std::uint32_t>(i);
+    }
+  }
+  return std::nullopt;
+}
+
 verify::Verdict check(const snapshot::Snapshot& snap, const verify::Query& query) {
   using verify::Basis;
   using verify::Level;

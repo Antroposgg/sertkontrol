@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,6 +18,7 @@
 #include "sertkontrol/snapshot/format.hpp"
 #include "sertkontrol/snapshot/holder.hpp"
 #include "sertkontrol/snapshot/writer.hpp"
+#include "support/checked.hpp"
 #include "support/files.hpp"
 
 namespace sk::snapshot {
@@ -159,6 +162,33 @@ TEST_F(SnapshotTest, BySerialFindsBothVariantsOfSameSerial) {
   EXPECT_TRUE(snap.by_serial("00001", 0).empty());  // старый формат без года — не в индексе
   EXPECT_TRUE(snap.by_serial("12a", 26).empty());
   EXPECT_TRUE(snap.by_serial("", 26).empty());
+}
+
+// C2 by_registry_id: QR выписки несёт ID записи реестра; индекс строится один раз, в том числе при
+// одновременных первых обращениях.
+TEST_F(SnapshotTest, ByRegistryId) {
+  const auto r = open_snapshot(write(sample()));
+  ASSERT_TRUE(r.has_value());
+  const auto& snap = *r.value();
+  std::array<std::optional<std::uint32_t>, 4> found{};
+  std::vector<std::thread> readers;
+  readers.reserve(found.size());
+  for (auto& slot : found) {
+    readers.emplace_back([&snap, &slot] { slot = snap.by_registry_id(21950326); });
+  }
+  for (auto& t : readers) {
+    t.join();
+  }
+  for (const auto& f : found) {
+    ASSERT_TRUE(f.has_value());
+    EXPECT_EQ(snap.record(sk::test::checked(f)).number, "RUD-CR.PA08.B.89369/26");
+  }
+  EXPECT_FALSE(snap.by_registry_id(0).has_value());  // «неизвестен» — не ключ поиска
+  EXPECT_FALSE(snap.by_registry_id(1).has_value());
+  EXPECT_FALSE(snap.by_registry_id(UINT64_MAX).has_value());
+  const auto empty = open_snapshot(write({}, "empty-registry.bin"));
+  ASSERT_TRUE(empty.has_value());
+  EXPECT_FALSE(empty.value()->by_registry_id(21950326).has_value());
 }
 
 TEST_F(SnapshotTest, EmptySnapshot) {

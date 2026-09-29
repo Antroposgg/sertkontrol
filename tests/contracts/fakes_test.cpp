@@ -117,6 +117,15 @@ TEST(FakeCheck, NotFoundMentionsDataDate) {
   EXPECT_EQ(v.findings[0].text, "Нет в данных на 26.09.2026");
 }
 
+TEST(FakeSnapshot, ByRegistryId) {
+  const auto snap = FakeSnapshot::three_records();
+  const auto i = snap->by_registry_id(2);
+  ASSERT_TRUE(i.has_value());
+  EXPECT_EQ(snap->record(sk::test::checked(i)).number, "RUC-RU.AB12.B.00017/24");
+  EXPECT_FALSE(snap->by_registry_id(0).has_value());
+  EXPECT_FALSE(snap->by_registry_id(99).has_value());
+}
+
 TEST(FakeCheck, UnparsedNumber) {
   const auto snap = FakeSnapshot::three_records();
   const auto v = check(*snap, {.text = "привет", .today = kToday});
@@ -137,6 +146,9 @@ class CollidingSnapshot final : public snapshot::Snapshot {
   [[nodiscard]] std::vector<std::uint32_t> by_serial(std::string_view /*serial*/,
                                                      std::uint8_t /*year*/) const override {
     return {};
+  }
+  [[nodiscard]] std::optional<std::uint32_t> by_registry_id(std::uint64_t /*registry_id*/) const override {
+    return std::nullopt;
   }
 
  private:

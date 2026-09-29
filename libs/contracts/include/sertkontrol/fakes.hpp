@@ -67,6 +67,8 @@ class FakeSnapshot final : public snapshot::Snapshot {
   [[nodiscard]] snapshot::RecordView record(std::size_t index) const override;
   [[nodiscard]] std::vector<std::uint32_t> by_serial(std::string_view serial,
                                                      std::uint8_t year) const override;
+  /// Линейный проход: фейк держит единицы записей.
+  [[nodiscard]] std::optional<std::uint32_t> by_registry_id(std::uint64_t registry_id) const override;
 
  private:
   std::vector<FakeRecord> records_{};

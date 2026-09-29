@@ -8,8 +8,12 @@
 #include <cerrno>
 #include <cstring>
 #include <limits>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -136,6 +140,29 @@ class MappedSnapshot final : public Snapshot {
     return out;
   }
 
+  [[nodiscard]] std::optional<std::uint32_t> by_registry_id(std::uint64_t registry_id) const override {
+    if (registry_id == 0) {
+      return std::nullopt;
+    }
+    // Индекс «ID реестра → запись» строится при первом обращении (docs/plan.md §8.2 п.3): в файле его нет,
+    // а проход по 1 млн записей на каждый QR был бы медленнее двоичного поиска на порядки.
+    std::call_once(registry_once_, [this] {
+      registry_index_.reserve(count_);
+      for (std::size_t i = 0; i < count_; ++i) {
+        const auto id = packed(i).registry_id;
+        if (id != 0) {
+          registry_index_.emplace_back(id, static_cast<std::uint32_t>(i));
+        }
+      }
+      std::ranges::sort(registry_index_);  // по ID, при равных — по индексу
+    });
+    const auto it = std::ranges::lower_bound(registry_index_, std::pair{registry_id, std::uint32_t{0}});
+    if (it == registry_index_.end() || it->first != registry_id) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
   /// Запись через memcpy: mmap не создаёт объекты в смысле C++20 (АРХ §7.4).
   [[nodiscard]] fmt::PackedRecord packed(std::size_t index) const {
     fmt::PackedRecord p;
@@ -179,6 +206,9 @@ class MappedSnapshot final : public Snapshot {
   std::size_t count_{0};
   std::size_t serial_count_{0};
   SnapshotMeta meta_;
+  // Ленивый индекс by_registry_id: снапшот неизменяем, поэтому единственная запись — под call_once.
+  mutable std::once_flag registry_once_{};
+  mutable std::vector<std::pair<std::uint64_t, std::uint32_t>> registry_index_{};
 };
 
 /// Проверка секции: выравнивание и границы файла без переполнения. У пустой секции (в т. ч. неиспользуемой,
