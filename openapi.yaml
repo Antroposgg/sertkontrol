@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Сертконтроль — REST API мини-приложения
-  version: 1.1.0
+  version: 1.3.0
   summary: Контракт C7 (АРХ §5, §8). Реализация — apps/certd/rest_api.cpp.
   description: |
     API для мини-приложения MAX. Мини-приложение и API на одном origin: CORS не нужен, cookie нет.
@@ -23,11 +23,17 @@ security:
   - initData: []
 tags:
   - name: Профиль
+    description: Пользователь мини-приложения, счётчики и демо-стадия
   - name: Проверка
+    description: Вердикт по номеру или PDF-выписке (F1–F3)
   - name: Портфель
+    description: Документы на контроле (F4)
   - name: Данные
+    description: Версия и дата данных реестра, история документа (F5)
   - name: Демо
+    description: Демо-сценарий N → N+1 на тестовых данных (F6)
   - name: Служебное
+    description: Готовность сервиса и webhook MAX
 
 paths:
   /api/v1/me:
@@ -41,6 +47,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/consent:
+    post:
+      tags: [Профиль]
+      summary: Согласие на обработку данных (как «Согласен» в боте)
+      description: |
+        Без согласия операции с данными пользователя отвечают `403 consent_required` (АРХ §10).
+        Повторный вызов не ошибка.
+      operationId: giveConsent
+      responses:
+        '204': { description: Согласие записано }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/check:
@@ -62,6 +80,7 @@ paths:
               schema: { $ref: '#/components/schemas/CheckedVerdict' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
         '422': { $ref: '#/components/responses/NumberNotRecognized' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/SnapshotUnavailable' }
@@ -78,6 +97,7 @@ paths:
             schema:
               type: object
               required: [file]
+              additionalProperties: false
               properties:
                 file:
                   type: string
@@ -93,6 +113,7 @@ paths:
                 items: { $ref: '#/components/schemas/CheckedVerdict' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
         '413': { $ref: '#/components/responses/FileTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/NumberNotRecognized' }
@@ -114,7 +135,7 @@ paths:
         - name: cursor
           in: query
           description: Значение `next_cursor` предыдущей страницы
-          schema: { type: string, pattern: '^[0-9]+$' }
+          schema: { type: string, pattern: '^[0-9]{1,18}$' }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
@@ -126,6 +147,7 @@ paths:
               schema: { $ref: '#/components/schemas/PortfolioPage' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
     post:
       tags: [Портфель]
       summary: Поставить документ на контроль (F4)
@@ -141,8 +163,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AddResult' }
+          links:
+            RemoveAdded:
+              operationId: removeFromPortfolio
+              description: Снять с контроля только что добавленный документ.
+              parameters:
+                id: '$response.body#/item/id'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/NumberNotRecognized' }
         '503': { $ref: '#/components/responses/SnapshotUnavailable' }
@@ -156,10 +185,11 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: string, pattern: '^[0-9]+$' }
+          schema: { type: string, pattern: '^[0-9]{1,18}$' }
       responses:
         '204': { description: Снято }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
         '404':
           description: Записи нет или она чужая — ответы неотличимы (IDOR)
           content:
@@ -202,6 +232,7 @@ paths:
               schema: { $ref: '#/components/schemas/DocumentHistory' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ConsentRequired' }
         '422': { $ref: '#/components/responses/NumberNotRecognized' }
         '503': { $ref: '#/components/responses/SnapshotUnavailable' }
 
@@ -310,7 +341,12 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: Действие недоступно этому пользователю (`forbidden`), например демо-сценарий вне демо-режима
+      description: Действие недоступно (`forbidden`, например демо-сценарий вне демо-режима) или нет согласия на обработку данных (`consent_required`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ConsentRequired:
+      description: Нет согласия на обработку данных (`consent_required`) или действие недоступно (`forbidden`)
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -359,7 +395,7 @@ components:
           type: string
           enum: [invalid_argument, unauthorized, init_data_expired, forbidden, not_found, conflict, file_too_large,
                  unsupported_media_type, number_not_recognized, not_found_in_snapshot, snapshot_unavailable,
-                 rate_limited, internal]
+                 rate_limited, consent_required, internal]
 
     Status:
       type: string

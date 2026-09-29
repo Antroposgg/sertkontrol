@@ -54,7 +54,8 @@ TEST(OpenApi, PathsMatchRegisteredRoutes) {
   RestApi::register_routes(drogon::app(), std::make_shared<RestApi>(domain, AuthConfig{}));
   std::set<std::string> registered{"get /healthz", "post /max/webhook"};  // регистрируются в main.cpp
   for (const auto& [path, method, desc] : drogon::app().getHandlersInfo()) {
-    if (path.starts_with("/api/")) {
+    // Обработчики-«405» — не операции API, а замена ответа Drogon на чужой метод.
+    if (path.starts_with("/api/") && !is_explicit_405(path, method)) {
       registered.insert(method_name(method) + " " + path);
     }
   }

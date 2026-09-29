@@ -16,6 +16,7 @@ export type ProblemCode =
   | 'not_found_in_snapshot'
   | 'snapshot_unavailable'
   | 'rate_limited'
+  | 'consent_required'
   | 'internal'
   | 'network';
 
@@ -69,6 +70,8 @@ export function problemMessage(problem: Problem): string {
       return 'Нет связи с сервером. Проверьте подключение и повторите.';
     case 'rate_limited':
       return 'Слишком много запросов. Попробуйте через минуту.';
+    case 'consent_required':
+      return 'Нужно согласие на обработку данных — оно запрашивается при открытии приложения.';
     default:
       return problem.detail ?? problem.title;
   }
