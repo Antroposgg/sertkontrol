@@ -20,7 +20,6 @@ libboost-dev
 libpq-dev
 libpoppler-cpp-dev
 libzxing-dev
-libtesseract-dev
 libxxhash-dev
 libexpat1-dev
 libsimdjson-dev
