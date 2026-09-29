@@ -4,7 +4,9 @@
 # SK_DEV_DOCKER_ARGS — дополнительные параметры `docker run` (разделяются пробелами), например для TSan в gate.sh.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-docker image inspect sertkontrol-dev >/dev/null 2>&1 ||
-  docker build -f "$root/docker/dev.Dockerfile" -t sertkontrol-dev "$root"
+# Тег — хеш dev.Dockerfile, списков пакетов и install-deps.sh: правка списка пересобирает образ, а не использует старый.
+tag="sertkontrol-dev:$(cat "$root/docker/dev.Dockerfile" "$root"/docker/apt-*.txt "$root/scripts/ci/install-deps.sh" | sha256sum | cut -c1-12)"
+docker image inspect "$tag" >/dev/null 2>&1 ||
+  docker build -f "$root/docker/dev.Dockerfile" -t "$tag" "$root"
 read -r -a extra <<<"${SK_DEV_DOCKER_ARGS:-}"
-exec docker run --rm "${extra[@]}" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/src" -w /src sertkontrol-dev "$@"
+exec docker run --rm "${extra[@]}" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/src" -w /src "$tag" "$@"
