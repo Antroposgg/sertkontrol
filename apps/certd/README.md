@@ -18,7 +18,7 @@
 | `domain.hpp` | **C6** `DomainService` и DTO (`UserContext{max_user_id, channel}`, `CheckResult`, `PortfolioItem`, `Page`, `DataStatus`, `DocumentHistory`, `DemoUpdate`, …) |
 | `domain_service.hpp/.cpp` | `DomainServiceImpl`: пользователи, согласие, журнал `check_log` с пачками, портфель, ИНН, `attach_supplier`, `history`, `simulate_update`, `reset_demo`; все запросы с фильтром по `user_id` |
 | `fake_domain.hpp/.cpp` | `FakeDomainService` — C6 в памяти для тестов бота и REST (в т. ч. демо N → N+1) |
-| `rest_api.hpp/.cpp` | `/api/v1/*`: аутентификация (initData или dev-пользователь, ADR-0013), тонкие обработчики, RFC 9457 |
+| `rest_api.hpp/.cpp` | `/api/v1/*`: аутентификация (initData или dev-пользователь, ADR-0013), проверка согласия (`authorize`), строгие параметры запроса, тонкие обработчики, RFC 9457; `Allow` на 405 (`install_allow_header`) |
 | `json_views.hpp/.cpp` | JSON по `openapi.yaml`, коды ошибок → HTTP |
 | `webhook.hpp/.cpp` | `POST /max/webhook`: секрет → разбор → `inbound_update` → 200 → обработка в фоне |
 | `bot/` | Диалоги бота — [README](bot/README.md) |
@@ -45,6 +45,8 @@
 |---|---|
 | `GET /healthz` | 200, если БД доступна и снапшот загружен; иначе 503 |
 | `/api/v1/*` | по [`openapi.yaml`](../../openapi.yaml) (C7); история и демо-действия — [ADR-0014](../../docs/adr/0014-history-and-demo-endpoints.md) |
+| `POST /api/v1/me/consent` | 204 — согласие записано; до него операции с данными отвечают `403 consent_required`, доступны только `/me` и `/data-status` (АРХ §10) |
+| чужой метод на `/api/v1/*` | 405 с `Allow` (RFC 9110 §15.5.6); на `/portfolio/{id}` — явным обработчиком (`kExplicit405Path`), т. к. Drogon 1.8.7 отвечает там 404 |
 | `POST /max/webhook` | 401 — неверный секрет; 400 — не событие; 200 — принято или повтор |
 | `/` | статика `web/dist` |
 
@@ -99,6 +101,8 @@ sequenceDiagram
 - Webhook отвечает до обработки: MAX ждёт 200 не дольше 30 с и повторяет до 10 раз; повтор отсекается по `inbound_update`.
 - Параметры корутин — по значению; никакого `?:` рядом с `co_await` (CLAUDE.md).
 - Файлы пользователей не пишутся на диск (временный каталог Drogon — в `/tmp`).
+- Параметр запроса вне C7 или пустой (`?cursor=`) — 400, а не «без фильтра»: опечатка в фильтре иначе вернула бы
+  весь портфель (находки schemathesis, `scripts/ci/contract-test.sh`).
 - Если QR выписки содержит ссылку на реестр, она заменяет ссылку, построенную по `registry_id`.
 
 ## Тесты
@@ -107,9 +111,12 @@ sequenceDiagram
 пачками, демо N → N+1 и сброс, история, очистка — на PostgreSQL через `scripts/ci/with-pg.sh`), `certd_jury_test`
 (сценарий жюри целиком: webhook → PDF → «На контроль» → «Симулировать обновление» → ровно одно уведомление через
 отправитель), `openapi_test` (пути `openapi.yaml` ≡ маршруты). `main.cpp` проверяется `scripts/ci/compose-smoke.sh`.
+Контрактные тесты C7 на живом стеке в боевом режиме — `scripts/ci/contract-test.sh` (schemathesis 4.28.0, все
+проверки, кроме `unsupported_method`, заменённой собственной проверкой 405 + `Allow` — ADR-0016).
 
 ## Ограничения и отложенное
 - Отправитель outbox — один на процесс (последовательный): при нескольких репликах certd лимиты MAX делятся между
   ними неявно; общий лимитер — этап 3, если понадобится.
 - Разбор PDF — в процессе certd, без подпроцесса с `RLIMIT_*` (Should, АРХ §10).
-- Импорт CSV (F9), фильтр по поставщику в REST — этап 3.
+- Импорт CSV (F9) — этап 4.
+- `TRACE` получает 405 без `Allow`: Drogon 1.8.7 отвечает до маршрутизации и советов ([ADR-0016](../../docs/adr/0016-trace-405-without-allow.md)).
