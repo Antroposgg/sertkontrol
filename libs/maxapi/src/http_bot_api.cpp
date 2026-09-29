@@ -110,8 +110,12 @@ drogon::Task<Result<Ok>> HttpBotApi::post(std::string path_and_query, std::strin
   std::string errs;
   const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
   if (reader->parse(resp.body.data(), resp.body.data() + resp.body.size(), &json, &errs) && json.isObject() &&
-      json.isMember("success") && !json["success"].asBool()) {
-    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + json["message"].asString()};
+      json["success"].isBool() && !json["success"].asBool()) {
+    std::string message = "без пояснения";
+    if (json["message"].isString()) {
+      message = json["message"].asString();
+    }
+    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + message};
   }
   co_return Ok{};
 }

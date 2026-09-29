@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 
 #include <json/json.h>
 
@@ -160,40 +161,59 @@ std::string to_outbox_json(const OutgoingMessage& msg) {
 }
 
 Result<OutgoingMessage> from_outbox_json(std::string_view json) {
+  // Строка приходит из БД: типы проверяются до чтения — `as*()` jsoncpp бросает на несовпадении типа.
   Json::Value v;
   const Json::CharReaderBuilder builder;
   std::string errs;
   const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
   if (!reader->parse(json.data(), json.data() + json.size(), &v, &errs) || !v.isObject() ||
-      v["version"].asInt() != 1 || !v["max_user_id"].isIntegral() || !v["text"].isString()) {
+      !v["version"].isInt64() || v["version"].asInt64() != 1 || !v["max_user_id"].isInt64() ||
+      !v["text"].isString() || !(v["is_demo"].isNull() || v["is_demo"].isBool()) ||
+      !(v["kind"].isNull() || v["kind"].isString()) || !(v["buttons"].isNull() || v["buttons"].isArray())) {
     return invalid_message("строка outbox не соответствует C9 v1");
   }
   OutgoingMessage m;
   m.max_user_id = v["max_user_id"].asInt64();
   m.text = v["text"].asString();
-  m.is_demo = v["is_demo"].asBool();
-  const auto kind = v["kind"].asString();
-  for (std::size_t i = 0; i < kKindNames.size(); ++i) {
-    if (kKindNames.at(i) == kind) {
-      m.kind = static_cast<MessageKind>(i);
+  m.is_demo = v["is_demo"].isBool() && v["is_demo"].asBool();
+  if (v["kind"].isString()) {
+    const auto kind = v["kind"].asString();
+    for (std::size_t i = 0; i < kKindNames.size(); ++i) {
+      if (kKindNames.at(i) == kind) {
+        m.kind = static_cast<MessageKind>(i);
+      }
     }
   }
+  const auto str = [](const Json::Value& b, const char* key) -> std::optional<std::string> {
+    const auto& f = b[key];
+    return f.isString() ? std::optional<std::string>{f.asString()} : std::nullopt;
+  };
   for (const auto& row : v["buttons"]) {
+    if (!row.isArray()) {
+      return invalid_message("ряд кнопок — не массив");
+    }
     std::vector<Button> r;
     for (const auto& jb : row) {
+      if (!jb.isObject()) {
+        return invalid_message("кнопка — не объект");
+      }
+      const auto type = str(jb, "type");
+      const auto text = str(jb, "text");
+      if (!type || !text) {
+        return invalid_message("у кнопки нет type или text");
+      }
       Button b;
-      const auto type = jb["type"].asString();
-      b.text = jb["text"].asString();
-      if (type == "link") {
+      b.text = *text;
+      if (*type == "link") {
         b.kind = Button::Kind::kLink;
-        b.url = jb["url"].asString();
-      } else if (type == "open_app") {
+        b.url = str(jb, "url").value_or("");
+      } else if (*type == "open_app") {
         b.kind = Button::Kind::kOpenApp;
-        b.payload = jb["start_param"].asString();
-      } else if (type == "callback") {
-        b.payload = jb["payload"].asString();
+        b.payload = str(jb, "start_param").value_or("");
+      } else if (*type == "callback") {
+        b.payload = str(jb, "payload").value_or("");
       } else {
-        return invalid_message("неизвестный тип кнопки «" + type + "»");
+        return invalid_message("неизвестный тип кнопки «" + *type + "»");
       }
       r.push_back(std::move(b));
     }

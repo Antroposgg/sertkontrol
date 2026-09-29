@@ -195,7 +195,7 @@ Result<InitData> validate_init_data(std::string_view raw, std::string_view bot_t
   const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
   const auto& text = user->second;
   if (!reader->parse(text.data(), text.data() + text.size(), &json, &errs) || !json.isObject() ||
-      !json["id"].isIntegral()) {
+      !json["id"].isInt64()) {
     return unauthorized("initData: некорректный user");
   }
   out.user_id = json["id"].asInt64();

@@ -106,7 +106,9 @@ std::optional<DocStateView> parse_state(const drogon::orm::Field& f) {
     return std::nullopt;
   }
   DocStateView out;
-  out.status = snapshot::status_from_string(v["status"].asString()).value_or(snapshot::Status::kUnknown);
+  if (v["status"].isString()) {
+    out.status = snapshot::status_from_string(v["status"].asString()).value_or(snapshot::Status::kUnknown);
+  }
   if (v["expiry_date"].isString()) {
     out.expiry_date = parse_iso(v["expiry_date"].asString());
   }
