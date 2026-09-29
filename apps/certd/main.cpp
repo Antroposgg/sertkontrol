@@ -14,6 +14,7 @@
 
 #include "bot/bot.hpp"
 #include "bot/card.hpp"
+#include "bot_identity.hpp"
 #include "clock.hpp"
 #include "config.hpp"
 #include "domain_service.hpp"
@@ -221,7 +222,20 @@ int run() {
   sk::certd::SnapshotLoader loader{db, snapshots};
   sk::certd::RateLimiter limiter;
   sk::certd::RecognitionPool recognition{cfg.recog_threads, cfg.recog_queue, sk::recog::recognize};
-  const sk::certd::bot::CardOptions card{.open_app = !cfg.max_bot_username.empty()};
+  // Username для кнопок open_app — из GET /me (bot_identity.hpp): неверный web_app MAX отвергает всё
+  // сообщение.
+  std::string bot_username = cfg.max_bot_username;
+  if (cfg.bot_enabled() && sk::maxapi::HttpBotApi::tls_available()) {
+    sk::maxapi::HttpBotApi probe{
+        sk::maxapi::BotApiConfig{.base_url = cfg.max_api_base_url, .token = cfg.max_bot_token, .threads = 1}};
+    auto identity = drogon::sync_wait(sk::certd::resolve_bot_username(&probe, cfg.max_bot_username));
+    if (!identity.warning.empty()) {
+      LOG_WARN << identity.warning;
+    }
+    bot_username = std::move(identity.username);
+    LOG_INFO << "кнопки open_app: " << (bot_username.empty() ? "выключены" : "web_app=" + bot_username);
+  }
+  const sk::certd::bot::CardOptions card{.open_app = !bot_username.empty()};
   // Без токена бота уведомления фиксируются (статусы портфеля, строки notification), но в outbox не пишутся:
   // отправлять их некому.
   sk::certd::NotifyService notify{db, [card, enabled = cfg.bot_enabled()](const sk::certd::ChangeNotice& n) {
@@ -266,13 +280,13 @@ int run() {
   std::optional<sk::maxapi::SendLimiter> send_limiter;
   std::optional<sk::certd::OutboxSender> sender;
   if (cfg.bot_enabled() && !sk::maxapi::HttpBotApi::tls_available()) {
-    // Без TLS токен ушёл бы открытым текстом, а MAX ответил бы 400 (ADR-0014).
+    // Без TLS токен ушёл бы открытым текстом, а MAX ответил бы 400 (ADR-0015).
     std::cerr << "certd: libcurl собран без TLS — бот не может обращаться к API MAX\n";
     return 2;
   }
   if (cfg.bot_enabled()) {
     bot_api.emplace(sk::maxapi::BotApiConfig{
-        .base_url = cfg.max_api_base_url, .token = cfg.max_bot_token, .bot_username = cfg.max_bot_username});
+        .base_url = cfg.max_api_base_url, .token = cfg.max_bot_token, .bot_username = bot_username});
     outbox.emplace(db);
     inbound.emplace(db);
     dialogs.emplace(db);
@@ -326,6 +340,7 @@ int run() {
     });
   }
 
+  sk::certd::install_allow_header(app);  // после всех registerHandler: RFC 9110 требует Allow в ответе 405
   LOG_INFO << "certd: порт " << cfg.port << ", статика " << cfg.web_root.string();
   // Файлы пользователей на диск не сохраняются (АРХ §6). Временный каталог Drogon — в /tmp,
   // иначе он создаётся в рабочем каталоге, куда у непривилегированного пользователя нет прав.

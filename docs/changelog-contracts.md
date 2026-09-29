@@ -5,6 +5,10 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-29 | C7, общие | `openapi.yaml` 1.3.0: `POST /me/consent` (204); операции с данными пользователя отвечают `403 consent_required` без согласия; `cursor`/`id` — до 18 цифр; `supplier_inn` — 10 или 12 цифр. `sk::ErrorCode::kConsentRequired` ↔ web `ProblemCode 'consent_required'` | Согласие на обработку данных (АРХ §10) в мини-приложении, не только в боте; находки schemathesis | 3 |
+| 2026-09-29 | C7 | `openapi.yaml` 1.2.0: описания тегов, link `POST /portfolio` → `DELETE /portfolio/{id}`; ответы 405 несут `Allow` (RFC 9110) | Линтер @redocly/cli и контрактные тесты schemathesis (АРХ §10) | 3 |
+| 2026-09-29 | C6 | `DomainService::confirm(user, check_id)` → `CheckResult` | «Это номер …?» → «Да» (АРХ §4, поток A, шаг 6); кнопки `y:`/`n:` уже в C9 | 3 |
+| 2026-09-29 | C4 | `Level::kNeedsConfirmation` начал выдаваться; правила `fuzzy.match`, `advice.confirm_number`; `Suggestion::distance` — взвешенное расстояние | Нечёткий поиск (АРХ §7.2) | 3 |
 | 2026-09-28 | C4 | Правило `not_found.recent` (расчёт): номер не найден, а год в номере равен году даты данных → «мог быть зарегистрирован после <даты>, проверьте по QR» | Правило V5 каталога R2 не было реализовано на этапе 1 | 2 |
 | 2026-09-27 | C9 | Действие callback `s:<check_id>` — «Указать поставщика» (ответ пользователя — ИНН, состояние диалога в `dialog_state`); вид сообщения `status_changed` рендерится ботом из `ChangeNotice` (`apps/certd/notify.hpp`) | F5 — уведомление о смене статуса; АРХ §8 «Интерфейс бота», кнопка `[Указать поставщика]` | 2 |
 | 2026-09-27 | C7 | `openapi.yaml` 1.1.0: `GET /history?number=` → `DocumentHistory`, `POST /demo/simulate-update` → `200 DemoUpdate`, `POST /demo/reset` → `204`; `DataStatus.demo_stage`, `DataStatus.demo_update_available`; ответ `403 forbidden` | Экран «Документ» и демо-кнопки (F5, F6); отличия от АРХ §8 — [ADR-0014](adr/0014-history-and-demo-endpoints.md) | 2 |

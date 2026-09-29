@@ -2,10 +2,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
 #include "bot/card.hpp"
+#include "bot_identity.hpp"
 #include "fake_domain.hpp"
 #include "memory_ports.hpp"
 #include "sertkontrol/fakes.hpp"
@@ -84,6 +87,30 @@ TEST_F(BotTest, ConsentThenHelp) {
   EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos);
 }
 
+// Набранный /start приходит обычным сообщением: справка, а не «Не нашёл номер»; текст после команды
+// проверяется.
+TEST_F(BotTest, StartAndHelpCommands) {
+  consent();
+  for (const auto* cmd : {"/start", " /help ", "/start@sertkontrol_bot"}) {
+    SCOPED_TRACE(cmd);
+    outbox.clear();
+    EXPECT_EQ(text(cmd), "");
+    EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos) << last().text;
+  }
+  outbox.clear();
+  EXPECT_EQ(text("/start\nЕАЭС N RU D-CR.PA08.B.89369/26"), "");
+  EXPECT_EQ(last().kind, maxapi::MessageKind::kVerdict);
+  // Команда — только первое слово: «/starting» и номер после неё — обычный текст.
+  outbox.clear();
+  EXPECT_EQ(text("/starting"), "");
+  EXPECT_EQ(last().text.find("Как пользоваться"), std::string::npos);
+}
+
+TEST_F(BotTest, StartCommandWithoutConsentAsksForIt) {
+  EXPECT_EQ(text("/start"), "");
+  EXPECT_TRUE(has_payload(last(), "c:1"));
+}
+
 // F3 в боте: карточка с блоками и метками, датой данных, пометкой тестовых данных и кнопками.
 TEST_F(BotTest, TextGivesVerdictCard) {
   consent();
@@ -135,6 +162,22 @@ TEST_F(BotTest, ManyNumbersGiveSummaryAndWatchAll) {
   press(m.buttons[0][0].payload);
   EXPECT_EQ(api.answers().back().notification, "Добавлено: 4, уже было: 0");
   EXPECT_EQ(drogon::sync_wait(domain.me({.max_user_id = kUser})).value().portfolio_count, 4U);
+}
+
+// Поток A, шаг 6: «Это номер …?» → «Да» → карточка; «Ввести вручную» → просьба прислать номер.
+TEST_F(BotTest, ConfirmSuggestedNumber) {
+  consent();
+  const auto checked =
+      drogon::sync_wait(domain.check_text({.max_user_id = kUser}, "RU D-CR.PA07.B.89369/26"));
+  ASSERT_TRUE(checked.has_value());
+  const auto id = checked.value().verdicts.at(0).check_id;
+  press("y:" + std::to_string(id));
+  EXPECT_EQ(api.answers().back().notification, "Проверяю номер");
+  EXPECT_NE(last().text.find("RU Д-CR.PA08.B.89369/26</b> — действует"), std::string::npos) << last().text;
+  press("n:" + std::to_string(id));
+  EXPECT_NE(last().text.find("Пришлите номер документа текстом"), std::string::npos);
+  press("y:999999");
+  EXPECT_EQ(api.answers().back().notification, "Подсказка устарела — пришлите номер ещё раз");
 }
 
 TEST_F(BotTest, WatchAndUnwatch) {
@@ -327,6 +370,33 @@ TEST(Card, EscapesHtmlInData) {
   EXPECT_EQ(m.buttons.size(), 1U);  // без ссылки https и без open_app
 }
 
+TEST(Card, DocumentStartParamFitsMaxLimits) {
+  const auto p = document_start_param("RUC-RU.AЯ46.B.10005/24");
+  EXPECT_EQ(p.substr(0, 4), "doc-");
+  EXPECT_EQ(document_start_param("RU/1"), "doc-52552f31");
+  EXPECT_TRUE(
+      std::ranges::all_of(p, [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-'; }));
+  EXPECT_LE(document_start_param(std::string(40, 'A')).size(), 512U);
+}
+
+TEST(Card, NeedsConfirmationAsksQuestion) {
+  const CheckedVerdict cv{.check_id = 42,
+                          .verdict = {.number = "RUD-CB.PAO8.B.89369/26",
+                                      .level = verify::Level::kNeedsConfirmation,
+                                      .suggestions = {{.number = "RUD-CR.PA08.B.89369/26", .distance = 1.3}},
+                                      .distance = 1.3,
+                                      .is_demo = true}};
+  const auto m = verdict_card(1, cv, {.open_app = true});
+  EXPECT_NE(m.text.find("Это номер <b>RU Д-CR.PA08.B.89369/26</b>?"), std::string::npos) << m.text;
+  EXPECT_NE(m.text.find("Тестовые данные"), std::string::npos);
+  ASSERT_EQ(m.buttons.size(), 1U);
+  EXPECT_EQ(m.buttons[0][0].payload, "y:42");
+  EXPECT_EQ(m.buttons[0][1].payload, "n:42");
+  EXPECT_TRUE(maxapi::validate(m).has_value());
+  EXPECT_EQ(parse_callback("y:42").value_or(Callback{}).action, 'y');
+  EXPECT_EQ(parse_callback("n:42").value_or(Callback{}).action, 'n');
+}
+
 TEST(Card, ErrorMessages) {
   for (const auto code :
        {ErrorCode::kNumberNotRecognized, ErrorCode::kUnsupportedMediaType, ErrorCode::kFileTooLarge,
@@ -362,6 +432,33 @@ TEST_F(WebhookTest, SecretParsingAndDedup) {
   EXPECT_EQ(outbox.entries().size(), 1U);  // обработано ровно один раз
   EXPECT_EQ(inbound.processed().size(), 1U);
   EXPECT_EQ(inbound.processed().begin()->second, "");
+}
+
+// open_app: username — из GET /me; MAX_BOT_USERNAME — только запасной (отображаемое имя ломало все ответы).
+TEST(BotIdentity, UsernameFromGetMe) {
+  maxapi::RecordingBotApi api;
+  const auto resolve = [&](std::string configured) {
+    return drogon::sync_wait(resolve_bot_username(&api, std::move(configured)));
+  };
+  api.set_me(maxapi::BotInfo{.user_id = 7, .username = "sertkontrol_bot"});
+  auto r = resolve("");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_TRUE(r.warning.empty());
+  r = resolve("Хакатон МАХ 476");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_NE(r.warning.find("не совпадает"), std::string::npos);
+
+  api.set_me(maxapi::BotInfo{.user_id = 7});
+  r = resolve("sertkontrol_bot");
+  EXPECT_TRUE(r.username.empty());  // у бота нет username — кнопки open_app выключены
+  EXPECT_NE(r.warning.find("выключены"), std::string::npos);
+
+  api.set_me(Error{ErrorCode::kInternal, "сеть"});
+  r = resolve("sertkontrol_bot");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_NE(r.warning.find("GET /me"), std::string::npos);
+  r = resolve("");
+  EXPECT_TRUE(r.username.empty());
 }
 
 }  // namespace

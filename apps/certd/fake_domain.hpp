@@ -29,6 +29,7 @@ class FakeDomainService final : public DomainService {
   drogon::Task<Result<Page<PortfolioItem>>> list_portfolio(UserContext user, PortfolioFilter filter) override;
   drogon::Task<Result<AddResult>> add_to_portfolio(UserContext user, AddRequest request) override;
   drogon::Task<Result<AddResult>> add_checked(UserContext user, std::int64_t check_id) override;
+  drogon::Task<Result<CheckResult>> confirm(UserContext user, std::int64_t check_id) override;
   drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) override;
   drogon::Task<Result<AddResult>> attach_supplier(UserContext user, std::int64_t check_id,
                                                   std::string supplier_inn) override;

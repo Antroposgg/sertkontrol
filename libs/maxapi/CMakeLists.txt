@@ -1,6 +1,6 @@
 # Клиент Bot API MAX, initData, разбор событий, C9 (R4).
 find_package(OpenSSL REQUIRED)
-# Исходящий HTTPS — libcurl: trantor из apt собран без TLS (ADR-0014).
+# Исходящий HTTPS — libcurl: trantor из apt собран без TLS (ADR-0015).
 find_package(CURL REQUIRED)
 
 add_library(sk_maxapi STATIC src/auth.cpp src/update.cpp src/message.cpp src/http_bot_api.cpp src/curl_http.cpp

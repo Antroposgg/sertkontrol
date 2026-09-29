@@ -1,6 +1,7 @@
 # libs/snapshot — формат, writer, reader, SnapshotHolder, diff (C2, владелец R1)
 
-**Статус:** этап 2 — формат v1, writer, reader, holder, diff двух снапшотов.
+**Статус:** этап 3 — ридер проверяет смещение и у пустых секций (находка `fuzz_snapshot_reader`).
+Этап 2 — формат v1, writer, reader, holder, diff двух снапшотов.
 
 ## Назначение и границы
 - Делает: бинарный формат снапшота ([docs/snapshot-format.md](../../docs/snapshot-format.md)), атомарную запись, чтение через `mmap` с полной проверкой, `SnapshotHolder` с атомарной заменой, diff двух снапшотов merge-join за O(N_old + N_new) (АРХ §7.3).

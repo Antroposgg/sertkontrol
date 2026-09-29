@@ -1,0 +1,9 @@
+# Линтер контракта C7 (openapi.yaml): scripts/ci/openapi-lint.sh.
+extends:
+  - recommended
+rules:
+  # Ошибки RFC 9457 описаны общими ответами; 4xx обязательны у каждой операции.
+  operation-4xx-response: error
+  operation-operationId-unique: error
+  no-unused-components: error
+  security-defined: error

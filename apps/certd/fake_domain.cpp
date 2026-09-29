@@ -135,6 +135,31 @@ drogon::Task<Result<AddResult>> FakeDomainService::add_checked(UserContext user,
   co_return add_locked(user.max_user_id, AddRequest{.number = it->second.number});
 }
 
+drogon::Task<Result<CheckResult>> FakeDomainService::confirm(UserContext user, std::int64_t check_id) {
+  std::string number;
+  {
+    const std::scoped_lock lock(mutex_);
+    const auto it = checks_.find(check_id);
+    if (it == checks_.end() || it->second.owner != user.max_user_id || it->second.number.empty()) {
+      co_return Error{ErrorCode::kNotFound, "Проверка не найдена"};
+    }
+    number = it->second.number;
+  }
+  // В fake нет нечёткого поиска: подсказка — первая другая запись с той же серией и годом.
+  const auto snap = snapshot_for(user.max_user_id);
+  const auto parsed = fake::parse(number);
+  if (parsed) {
+    for (const auto idx : snap->by_serial(parsed->serial, parsed->year)) {
+      if (const auto rec = snap->record(idx); rec.number != number) {
+        std::vector<std::string> numbers;
+        numbers.emplace_back(rec.number);
+        co_return check_all(user.max_user_id, numbers);
+      }
+    }
+  }
+  co_return Error{ErrorCode::kNotFound, "подсказка устарела"};
+}
+
 drogon::Task<Result<BatchAddResult>> FakeDomainService::add_batch(UserContext user, std::int64_t batch_id) {
   const std::scoped_lock lock(mutex_);
   BatchAddResult out;

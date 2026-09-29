@@ -248,6 +248,12 @@ TEST_F(SnapshotTest, RejectsWrongHeaderFields) {
        "вне файла"},
       {"section-unaligned", [](fmt::FileHeader& h, std::string&) { h.sections[0].offset += 8; },
        "не выровнена"},
+      // Находка fuzz: у пустой секции смещение тоже проверяется — `base + offset` вне файла уже UB.
+      {"empty-section-offset",
+       [](fmt::FileHeader& h, std::string&) {
+         h.sections[static_cast<std::size_t>(fmt::Section::kSerialIndex)] = {.offset = 1ULL << 60, .size = 0};
+       },
+       "вне файла"},
       {"count", [](fmt::FileHeader& h, std::string&) { h.record_count += 1; }, "размеры секций"},
       {"no-strings", [](fmt::FileHeader& h, std::string&) { h.string_count = 0; }, "размеры секций"},
   };

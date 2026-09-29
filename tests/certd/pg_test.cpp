@@ -240,6 +240,27 @@ TEST_F(DomainPgTest, IdorForeignIdIsNotFound) {
   EXPECT_EQ(run(svc->me(alice)).value().portfolio_count, 1U);
 }
 
+// F1: номер с ошибками OCR (АРХ §7.1, третья строка golden) → «Это номер …?» → «Да» → карточка точного
+// номера.
+TEST_F(DomainPgTest, FuzzyNumberConfirmed) {
+  const auto checked = run(svc->check_text(alice, "ЕАЭС М RU ДСВ.РАО8.В.89369/26"));
+  ASSERT_TRUE(checked.has_value()) << checked.error().detail;
+  const auto& question = checked.value().verdicts.at(0);
+  EXPECT_EQ(question.verdict.level, verify::Level::kNeedsConfirmation);
+  EXPECT_EQ(question.verdict.suggestions.at(0).number, "RUD-CR.PA08.B.89369/26");
+  const auto confirmed = run(svc->confirm(alice, question.check_id));
+  ASSERT_TRUE(confirmed.has_value()) << confirmed.error().detail;
+  const auto& exact = confirmed.value().verdicts.at(0);
+  EXPECT_EQ(exact.verdict.level, verify::Level::kOk);
+  EXPECT_EQ(exact.verdict.number, "RUD-CR.PA08.B.89369/26");
+  EXPECT_NE(exact.check_id, question.check_id);  // новая строка журнала — на неё работает «На контроль»
+  ASSERT_TRUE(run(svc->add_checked(alice, exact.check_id)));
+  // Чужая проверка и проверка без уверенной подсказки — kNotFound.
+  EXPECT_EQ(run(svc->confirm(bob, question.check_id)).error().code, ErrorCode::kNotFound);
+  EXPECT_EQ(run(svc->confirm(alice, exact.check_id)).error().code, ErrorCode::kNotFound);
+  EXPECT_EQ(run(svc->confirm(alice, 0)).error().code, ErrorCode::kNotFound);
+}
+
 TEST_F(DomainPgTest, AddFromChecksAndBatch) {
   const auto checked = run(svc->check_text(alice, "RU D-CR.PA08.B.89369/26 RU D-RU.PA01.B.10001/25 привет"));
   ASSERT_TRUE(checked.has_value());

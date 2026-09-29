@@ -3,7 +3,7 @@
 Сертконтроль — бот и мини-приложение MAX для проверки и мониторинга сертификатов и деклараций о соответствии.
 Модульный монолит на C++20 (`certd` + `ingest`), PostgreSQL 16, мини-приложение на React + TS.
 
-**Текущий этап: 2 — обновление данных и уведомления (завершён; `docker build`/compose-smoke ещё не прогнаны — docs/plan.md §6.4; ожидает команды на этап 3).** План и статус — [`docs/plan.md`](docs/plan.md).
+**Текущий этап: 3 — нечёткий поиск и надёжность (ветка `stage-3`; ворота пройдены — docs/plan.md §7.4; ожидает команды на этап 4).** План и статус — [`docs/plan.md`](docs/plan.md).
 
 Источники истины (читать перед любой работой):
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — АРХ: стек, структура, контракты C1–C9, алгоритмы, CI;
@@ -19,16 +19,18 @@
 | `libs/contracts` | все | Контракты C1, C2, C4, C5 + fake | этап 0 ✔ | [→](libs/contracts/README.md) |
 | `libs/canon` | R2 | Канонизация и грамматика номера (C1) | этап 1 ✔ | [→](libs/canon/README.md) |
 | `libs/snapshot` | R1 | Формат, writer, reader, diff (C2) | этап 2 ✔ | [→](libs/snapshot/README.md) |
-| `libs/verify` | R2 | Поиск, правила вердикта, ИНН (C4) | этап 1 ✔ (нечёткий — 3) | [→](libs/verify/README.md) |
+| `libs/verify` | R2 | Поиск, правила вердикта, ИНН (C4) | этап 3 ✔ (нечёткий поиск, `fuzzy.hpp`) | [→](libs/verify/README.md) |
 | `libs/recog` | R3 | PDF, QR, OCR (C5) | этап 1 ✔ (OCR — 4) | [→](libs/recog/README.md) |
-| `libs/maxapi` | R4 | Bot API MAX, initData, события, C9, лимитер | этап 2 ✔ | [→](libs/maxapi/README.md) |
+| `libs/maxapi` | R4 | Bot API MAX, initData, события, C9, лимитер | этап 3 ✔ (разбор JSON без исключений) | [→](libs/maxapi/README.md) |
 | `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 2 ✔ (`--demo` N/N+1, `--daemon`; `--once` — после подтверждения данных) | [→](apps/ingest/README.md) |
-| `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `LISTEN`, задачи, уведомления, `/healthz`, статика | этап 2 ✔ | [→](apps/certd/README.md) |
-| `apps/certd/bot` | R4 | Диалоги бота, рендер уведомлений | этап 2 ✔ | [→](apps/certd/bot/README.md) |
-| `web/` | R4 | Мини-приложение | этап 2 ✔ (Портфель, Документ, Добавить, Данные; Импорт CSV — 4) | [→](web/README.md) |
+| `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `LISTEN`, задачи, уведомления, `/healthz`, статика | этап 3 ✔ (согласие в REST, `confirm`, строгие параметры, 405 + `Allow`) | [→](apps/certd/README.md) |
+| `apps/certd/bot` | R4 | Диалоги бота, рендер уведомлений | этап 3 ✔ («Это номер …?», «Подробнее» → «Документ») | [→](apps/certd/bot/README.md) |
+| `web/` | R4 | Мини-приложение | этап 3 ✔ (Портфель, Документ, Добавить, Данные, согласие; Импорт CSV — 4) | [→](web/README.md) |
 | `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 2 ✔ (`0003`) | [→](db/README.md) |
 | `data/demo/` | R1 | Демо-источники N и N+1 | этап 2 ✔ | [→](data/demo/README.md) |
-| `tests/`, `fuzz/`, `bench/` | все | Тесты, fuzz (этап 3), бенчмарки (этап 3) | — | [→](tests/README.md) |
+| `tests/` | все | Модульные, property, PG, TSan (`tests/concurrency`), сценарий жюри | этап 3 ✔ | [→](tests/README.md) |
+| `fuzz/` | все | 7 целей libFuzzer + корпуса | этап 3 ✔ | [→](fuzz/README.md) |
+| `bench/` | все | Google Benchmark против АРХ §2 | этап 3 ✔ | [→](bench/README.md) |
 
 Роли (АРХ §1): R1 «Данные реестра», R2 «Поиск и вердикт», R3 «Backend и распознавание», R4 «MAX и продукт».
 
@@ -75,6 +77,9 @@ Node.js 24 — через nvm). Без установленных пакетов
 |---|---|
 | Сборка + тесты GCC 13 Release, unity как в Docker (тесты ×2, с временным PostgreSQL) | `scripts/ci/cpp-build-test.sh gcc-release` |
 | Сборка + тесты clang 18 ASan/UBSan | `scripts/ci/cpp-build-test.sh clang-asan` |
+| Сборка + тесты clang 18 ThreadSanitizer | `scripts/ci/cpp-build-test.sh clang-tsan` |
+| Fuzz smoke, все цели параллельно (`SK_FUZZ_SECONDS`, по умолчанию 60) | `scripts/ci/fuzz-smoke.sh` |
+| Бенчмарки против целей АРХ §2 | `scripts/ci/bench.sh` |
 | Покрытие C++ (gcovr, ≥ 70% строк libs/ + apps/) | `scripts/ci/cpp-coverage.sh` → `build/coverage/report/index.html` |
 | clang-format (проверка / исправление) | `scripts/ci/cpp-format-check.sh [--fix]` |
 | clang-tidy | `scripts/ci/cpp-tidy.sh` |
@@ -82,13 +87,17 @@ Node.js 24 — через nvm). Без установленных пакетов
 | Миграции на чистом PG 16 | `scripts/ci/db-migrations.sh` |
 | Любая команда с временным PostgreSQL 16 (`SK_TEST_PG`) | `scripts/ci/with-pg.sh <команда>` |
 | Web: lint, tsc, тесты ≥ 70% (×2), build | `scripts/ci/web.sh` (без Node: `docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src node:24-slim scripts/ci/web.sh`) |
+| Линтер OpenAPI (@redocly/cli, правила — `redocly.yaml`) | `scripts/ci/openapi-lint.sh` |
 | `docker build --no-cache` с таймером ≤ 240 с | `scripts/ci/docker-build.sh` |
 | Стек одной командой + `/healthz` | `scripts/ci/compose-smoke.sh` |
+| Контрактные тесты C7 (schemathesis против compose в боевом режиме) | `scripts/ci/contract-test.sh` |
 | Секреты | `scripts/ci/gitleaks.sh` |
 | Все ворота одной командой (C++ и web — в контейнерах, нужен только Docker) | `scripts/gate.sh` |
 | Запуск стека | `docker compose up --build` → http://localhost:8080/healthz |
 
-Пресеты CMake — `CMakePresets.json`: `gcc-release`, `clang-asan`, `coverage`, `tidy`, `docker`. Сборка — в `build/<пресет>`.
+Пресеты CMake — `CMakePresets.json`: `gcc-release`, `clang-asan`, `clang-tsan`, `coverage`, `tidy`, `docker`, `fuzz`, `bench`.
+Сборка — в `build/<пресет>`. Тесты — через `ctest --preset <пресет>`: PG-тесты делят одну базу и идут последовательно
+(ручной `ctest -j` даёт ложные падения). Для `curl` к localhost за прокси — `--noproxy '*'`.
 
 ## Правила изменения контрактов
 

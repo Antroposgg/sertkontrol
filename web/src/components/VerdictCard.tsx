@@ -15,6 +15,8 @@ export interface VerdictCardProps {
   verdict: Verdict;
   /** «На контроль»; не передан — кнопки нет. */
   onWatch?: () => void;
+  /** «Да» на вопрос «Это номер …?» — проверить подсказанный номер (АРХ §4, поток A, шаг 6). */
+  onConfirm?: (number: string) => void;
   watching?: boolean;
 }
 
@@ -22,17 +24,42 @@ export interface VerdictCardProps {
  * Карточка вердикта (F3): статус, сроки, заявитель, изготовитель, продукция, ссылка на реестр, дата данных;
  * каждая строка — в блоке «Факт / Расчёт / Рекомендация». Содержание совпадает с карточкой бота.
  */
-export function VerdictCard({ verdict, onWatch, watching = false }: VerdictCardProps) {
+export function VerdictCard({ verdict, onWatch, onConfirm, watching = false }: VerdictCardProps) {
+  const suggestion = verdict.suggestions[0];
+  if (verdict.level === 'needs_confirmation' && suggestion !== undefined) {
+    return (
+      <article className="verdict" aria-label={`Вопрос о номере ${verdict.display_number ?? verdict.query}`}>
+        <Typography.Title>❓ Это номер {suggestion.display_number}?</Typography.Title>
+        <Typography.Body>
+          Номера {verdict.display_number ?? verdict.query} нет в данных реестра на {formatDate(verdict.data_date)}. Похоже на
+          ошибку распознавания или опечатку.
+        </Typography.Body>
+        {verdict.is_demo && <p className="demo-note">Тестовые данные: демо-снапшот реестра</p>}
+        {onConfirm !== undefined && (
+          <div className="actions">
+            <Button
+              onClick={() => {
+                onConfirm(suggestion.number);
+              }}
+            >
+              Да, проверить
+            </Button>
+          </div>
+        )}
+      </article>
+    );
+  }
   const card = verdict.card;
   const title = verdict.display_number ?? verdict.query;
   return (
     <article className="verdict" aria-label={`Вердикт ${title}`}>
+      {/* Статус — в том же заголовке, что и в боте: Title и Body max-ui строчные и иначе слипаются («…/26действует»). */}
       <Typography.Title>
-        {LEVEL_ICONS[verdict.level]} {card === null ? title : `${card.kind === 'certificate' ? 'Сертификат' : 'Декларация'} ${title}`}
+        {LEVEL_ICONS[verdict.level]}{' '}
+        {card === null
+          ? `${title} — ${verdict.number === null ? 'номер не распознан' : 'нет в данных реестра'}`
+          : `${card.kind === 'certificate' ? 'Сертификат' : 'Декларация'} ${title} — ${card.status_name}`}
       </Typography.Title>
-      <Typography.Body>
-        {card === null ? (verdict.number === null ? 'Номер не распознан' : 'Нет в данных реестра') : card.status_name}
-      </Typography.Body>
       {verdict.is_demo && <p className="demo-note">Тестовые данные: демо-снапшот реестра</p>}
       {SECTIONS.map(({ basis, title: sectionTitle }) => {
         const rows = verdict.findings.filter((f) => f.basis === basis).map((f) => f.text);

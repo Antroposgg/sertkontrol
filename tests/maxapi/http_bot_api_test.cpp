@@ -77,6 +77,18 @@ class HttpBotApiTest : public ::testing::Test {
                           cb(resp);
                         },
                         {drogon::Post});
+    app.registerHandler(
+        "/me",
+        [record](const drogon::HttpRequestPtr& req,
+                 std::function<void(const drogon::HttpResponsePtr&)>&& cb_in) {
+          const auto cb = std::move(cb_in);
+          record(req);
+          auto resp = drogon::HttpResponse::newHttpResponse();
+          resp->setBody(R"({"user_id":7,"first_name":"Хакатон МАХ 476","username":"sertkontrol_bot",)"
+                        R"("is_bot":true,"last_activity_time":0})");
+          cb(resp);
+        },
+        {drogon::Get});
     app.registerHandler("/answers",
                         [record](const drogon::HttpRequestPtr& req,
                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb_in) {
@@ -139,6 +151,30 @@ TEST_F(HttpBotApiTest, SendMessageUsesHeaderQueryAndBody) {
   EXPECT_EQ(seen().authorization, "tok-123");
   EXPECT_NE(seen().body.find(R"("format":"html")"), std::string::npos);
   EXPECT_NE(seen().body.find(R"("payload":"w:1")"), std::string::npos);
+}
+
+TEST_F(HttpBotApiTest, GetMeReturnsUsername) {
+  auto client = api();
+  const auto r = drogon::sync_wait(client.get_me());
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  EXPECT_EQ(r.value().user_id, 7);
+  EXPECT_EQ(r.value().username, "sertkontrol_bot");
+  const std::scoped_lock lock(seen().mutex);
+  EXPECT_EQ(seen().path, "/me");
+  EXPECT_EQ(seen().authorization, "tok-123");
+}
+
+TEST(BotInfo, Parse) {
+  EXPECT_FALSE(parse_bot_info("{}").has_value());
+  EXPECT_FALSE(parse_bot_info(R"({"user_id":"7"})").has_value());
+  EXPECT_FALSE(parse_bot_info(R"({"user_id":7,"username":5})").has_value());
+  EXPECT_FALSE(parse_bot_info(std::string(5000, '[')).has_value());
+  const auto null_name = parse_bot_info(R"({"user_id":7,"username":null})");
+  ASSERT_TRUE(null_name.has_value());
+  EXPECT_FALSE(null_name.value().username.has_value());
+  const auto empty_name = parse_bot_info(R"({"user_id":7,"username":""})");
+  ASSERT_TRUE(empty_name.has_value());
+  EXPECT_FALSE(empty_name.value().username.has_value());
 }
 
 TEST_F(HttpBotApiTest, StatusMapping) {

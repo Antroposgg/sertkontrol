@@ -60,6 +60,20 @@ TEST(Update, CallbackAndBotStarted) {
   EXPECT_EQ(dedup_key(bs.value()), "s:67890:1790000002000");
 }
 
+TEST(Update, NumbersOutOfRangeDoNotThrow) {
+  const auto u = parse_update(R"({"update_type":"dialog_muted","timestamp":17890000018900002000})");
+  ASSERT_TRUE(u.has_value());
+  EXPECT_EQ(std::get<OtherUpdate>(u.value()).timestamp, 0);
+}
+
+// Находка fuzz: jsoncpp бросает Json::RuntimeError на вложенности глубже stackLimit — должна быть ошибка
+// разбора.
+TEST(Update, DeepNestingIsInvalidNotThrow) {
+  const std::string deep = std::string(5000, '[') + std::string(5000, ']');
+  EXPECT_FALSE(parse_update(deep).has_value());
+  EXPECT_FALSE(from_outbox_json(deep).has_value());
+}
+
 TEST(Update, OtherAndInvalid) {
   const auto o = parse_update(R"({"update_type":"dialog_muted","timestamp":5})");
   ASSERT_TRUE(o.has_value());
@@ -99,6 +113,17 @@ TEST(Message, OutboxRoundTrip) {
   EXPECT_EQ(back.value().buttons[1][0].url, "https://pub.fsa.gov.ru/rds/declaration");
   EXPECT_EQ(back.value().buttons[1][1].kind, Button::Kind::kOpenApp);
   EXPECT_FALSE(from_outbox_json(R"({"version":2})").has_value());
+  // Находки fuzz_outbox_json: неверные типы полей — отказ, а не исключение jsoncpp.
+  for (const char* bad :
+       {R"({"version":1,"max_user_id":1,"text":"x","is_demo":"ict"})",
+        R"({"version":"1","max_user_id":1,"text":"x"})",
+        R"({"version":1,"max_user_id":1,"text":"x","kind":5})",
+        R"({"version":1,"max_user_id":1,"text":"x","buttons":{}})",
+        R"({"version":1,"max_user_id":1,"text":"x","buttons":[5]})",
+        R"({"version":1,"max_user_id":1,"text":"x","buttons":[[5]]})",
+        R"({"version":1,"max_user_id":1,"text":"x","buttons":[[{"type":1,"text":"a"}]]})"}) {
+    EXPECT_FALSE(from_outbox_json(bad).has_value()) << bad;
+  }
   EXPECT_FALSE(from_outbox_json(
                    R"({"version":1,"max_user_id":1,"text":"x","buttons":[[{"type":"magic","text":"x"}]]})")
                    .has_value());

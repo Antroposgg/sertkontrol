@@ -1,0 +1,5 @@
+# Тестовая фикстура DemoTsvSource.
+#source_date=2026-09-25
+number	status	issue_date	expiry_date	status_date	suspended_until	applicant_name	applicant_inn	manufacturer_name	product	tnved	country	lab_accreditation	registry_id
+ЕАЭС N RU Д-CR.РА08.В.89369/26	Действует	2026-02-10	2031-02-09	2026-02-10		ООО «ТЕСТ»	7700000016	ТЕСТ	Чайники	8516107100	CN	RA.RU.21ТЕ01	0
+ЕАЭС RU С-RU.АЯ46.В.10005/24	Прекращён	2024-03-01	2029-02-28	2026-06-15		АО «ТЕСТ»	5000000031	АО «ТЕСТ»	Светильники	9405119009	RU	RA.RU.11ТЕ05	42

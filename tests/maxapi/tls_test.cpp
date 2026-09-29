@@ -1,4 +1,4 @@
-/// Исходящий HTTPS по-настоящему шифруется и проверяет сертификат (ADR-0014).
+/// Исходящий HTTPS по-настоящему шифруется и проверяет сертификат (ADR-0015).
 /// Сервер — `openssl s_server -www` с самоподписанным сертификатом во временном каталоге.
 #include <gtest/gtest.h>
 
@@ -58,10 +58,14 @@ class TlsTest : public ::testing::Test {
         "-addext subjectAltName=IP:127.0.0.1,DNS:localhost -keyout " +
         (dir() / "key.pem").string() + " -out " + (dir() / "cert.pem").string() + " >/dev/null 2>&1";
     // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): однократная подготовка фикстуры до запуска потоков.
-    ASSERT_EQ(std::system(cmd.c_str()), 0);
+    if (std::system(cmd.c_str()) != 0) {
+      return;  // ready() == false — каждый тест упадёт в SetUp
+    }
     port() = free_port();
     const pid_t pid = ::fork();
-    ASSERT_GE(pid, 0);
+    if (pid < 0) {
+      return;
+    }
     if (pid == 0) {
       const auto cert = (dir() / "cert.pem").string();
       const auto key = (dir() / "key.pem").string();
@@ -75,7 +79,11 @@ class TlsTest : public ::testing::Test {
     for (int i = 0; i < 100 && !port_open(port()); ++i) {
       std::this_thread::sleep_for(std::chrono::milliseconds{50});
     }
+    ready() = port_open(port());
   }
+  // Без ASSERT в SetUpTestSuite: их провал gtest печатает как SKIPPED, и ctest засчитывает тест как
+  // пройденный. Готовность фикстуры проверяется в каждом тесте — отсутствие openssl становится провалом.
+  void SetUp() override { ASSERT_TRUE(ready()) << "фикстура TLS не поднялась: нужен CLI openssl"; }
   static void TearDownTestSuite() {
     if (server() > 0) {
       ::kill(server(), SIGTERM);
@@ -90,6 +98,10 @@ class TlsTest : public ::testing::Test {
   }
   static std::uint16_t& port() {
     static std::uint16_t v = 0;
+    return v;
+  }
+  static bool& ready() {
+    static bool v = false;
     return v;
   }
   static pid_t& server() {

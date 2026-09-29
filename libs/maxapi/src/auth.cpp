@@ -11,6 +11,8 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+#include "json_parse.hpp"
+
 namespace sk::maxapi {
 
 namespace {
@@ -190,12 +192,7 @@ Result<InitData> validate_init_data(std::string_view raw, std::string_view bot_t
     return unauthorized("initData: нет user");
   }
   Json::Value json;
-  const Json::CharReaderBuilder builder;
-  std::string errs;
-  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
-  const auto& text = user->second;
-  if (!reader->parse(text.data(), text.data() + text.size(), &json, &errs) || !json.isObject() ||
-      !json["id"].isIntegral()) {
+  if (!detail::parse_json(user->second, json) || !json.isObject() || !json["id"].isInt64()) {
     return unauthorized("initData: некорректный user");
   }
   out.user_id = json["id"].asInt64();

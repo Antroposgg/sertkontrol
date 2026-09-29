@@ -20,6 +20,11 @@ class RecordingBotApi final : public BotApi {
     std::string notification{};
   };
 
+  drogon::Task<Result<BotInfo>> get_me() override {
+    const std::scoped_lock lock(mutex_);
+    co_return me_;
+  }
+
   drogon::Task<Result<Ok>> send_message(OutgoingMessage msg) override {
     const std::scoped_lock lock(mutex_);
     if (fail_next_) {
@@ -51,6 +56,11 @@ class RecordingBotApi final : public BotApi {
     co_return it->second;
   }
 
+  /// Ответ `get_me`: данные бота или ошибка (по умолчанию — бот без username).
+  void set_me(Result<BotInfo> me) {
+    const std::scoped_lock lock(mutex_);
+    me_ = std::move(me);
+  }
   void add_file(std::string url, std::vector<std::byte> bytes) {
     const std::scoped_lock lock(mutex_);
     files_[std::move(url)] = std::move(bytes);
@@ -75,6 +85,7 @@ class RecordingBotApi final : public BotApi {
   std::vector<OutgoingMessage> messages_;
   std::vector<Answer> answers_;
   std::map<std::string, std::vector<std::byte>> files_;
+  Result<BotInfo> me_{BotInfo{}};
   bool fail_next_{false};
   ErrorCode fail_code_{ErrorCode::kInternal};
 };

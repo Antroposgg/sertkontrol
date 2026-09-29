@@ -89,9 +89,9 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 |---|---|---|
 | 1 | GCC 13 и clang 18 с `-Werror`, clang-tidy, clang-format, eslint, tsc strict | 0 ошибок, 0 предупреждений |
 | 2 | Тесты ×2, ASan/UBSan | C++ 55/55 (каждый дважды), web 25/25 (дважды); находок санитайзеров нет |
-| 3 | Покрытие | C++ 85,5% строк (порог 70), web 100% строк (порог 70) |
+| 3 | Покрытие | C++ 89,4% строк (3386/3788); web 99,31% строк |
 | 4 | Шаги CI локально | все зелёные; на GitHub не запускался — нет удалённого репозитория |
-| 5 | `docker build --no-cache` / compose | 86 с (цель ≤ 240 с); `/healthz` → 200, `/` → 200 |
+| 5 | `docker build --no-cache` / compose | 94 с на чистом клоне (порог 240 с); CI #20 (PR #3) — все 11 задач зелёные. При просадке канала стенда до 0,3–0,8 МБ/с было 294 с — время почти целиком уходит на загрузку пакетов apt. `compose-smoke` → `/healthz` 200, `/` 200, согласие 204, `/api/v1/check` → `ok` |
 | 6 | Критерии F этапа | F-требований в этапе 0 нет; F6 частично — изоляция демо-стадий в `FakeDomainService` покрыта тестом |
 | 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонения — ADR 0007–0011 |
 | 8 | Документация | README всех модулей, CLAUDE.md, этот план |
@@ -106,7 +106,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | 0 | Каркас | ✔ завершён, ворота зелёные |
 | 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | ✔ завершён 2026-09-27, ворота зелёные |
 | 2 | Обновление и уведомления (F5, F6) | ✔ завершён 2026-09-28; ворота зелёные, кроме Docker (§6.4) |
-| 3 | Нечёткий поиск и надёжность | ожидает команды |
+| 3 | Нечёткий поиск и надёжность | в работе |
 | 4 | Should: F7–F10 | по отдельной команде |
 
 ---
@@ -127,7 +127,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | Webhook | `POST /subscriptions {url, update_types, secret}`; только HTTPS:443; ответ 200 ≤ 30 с; до 10 повторов с экспоненциальной паузой; секрет 5–256 символов `[A-Za-z0-9_-]` в заголовке `X-Max-Bot-Api-Secret` | Проверка секрета, дедупликация |
 | События | `update_type`: `message_created` (`message.body.mid`, `.text`, `.attachments`, `message.sender.user_id`), `message_callback` (`callback.callback_id`, `callback.payload`, `callback.user`), `bot_started` (`user`, `chat_id`, `payload`) | Ключи дедупликации `m:<mid>`, `c:<callback_id>`, `s:<user_id>:<timestamp>` |
 | Отправка | `POST /messages?user_id=` с `NewMessageBody {text ≤ 4000, attachments, format: markdown|html, notify}`; ≤ 2 сообщения/с в один диалог | Карточки — `format: html`, только `<b>` + экранирование |
-| Кнопки | `inline_keyboard`: ≤ 30 рядов, ≤ 7 кнопок в ряду, ≤ 3 для `link`/`open_app`; `callback.payload` ≤ **1024** символа; `open_app` требует `web_app` (публичное имя бота), `payload` `^[\w-]{0,512}$` | Payload `<действие>:<id>`; `MAX_BOT_USERNAME` для `open_app` |
+| Кнопки | `inline_keyboard`: ≤ 30 рядов, ≤ 7 кнопок в ряду, ≤ 3 для `link`/`open_app`; `callback.payload` ≤ **1024** символа; `open_app` требует `web_app` (публичное имя бота), `payload` `^[\w-]{0,512}$` | Payload `<действие>:<id>`; username для `open_app` — из `GET /me` (с этапа 3; `MAX_BOT_USERNAME` — запасной) |
 | Ответ на кнопку | `POST /answers?callback_id=` `{message?, notification?}` | Короткое уведомление «Добавлено на контроль» |
 | Вложение-файл | `{type: file, payload: {url, token}, filename, size}` | Проверка `size ≤ 20 МБ` до скачивания |
 | Скачивание по `payload.url` | Нужна ли авторизация и срок жизни ссылки — **в документации не указано** | За интерфейсом `AttachmentFetcher`; в «известных ограничениях»; ручная проверка |
@@ -285,3 +285,92 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 с `run_at = now()`, исполнитель опрашивает очередь раз в секунду, отправитель — раз в 0,3 с. Худший случай при сбоях
 задачи: 60 с + повторы через 30, 60, 120, 240 с = 510 с ≈ 8,5 мин < 15 мин; при исправной БД — секунды (в тесте жюри — < 1 с).
 Отправка N уведомлений ограничена лимитером: 25 сообщений/с, т. е. 15 мин ≈ 22 500 пользователей с изменениями.
+
+---
+
+## 7. Этап 3 — нечёткий поиск и надёжность (детальный план)
+
+Цель: F1 полностью (номер с 1–2 ошибками находится и подтверждается вопросом «Это номер …?»), доказательства
+надёжности — property-тесты, fuzz, TSan, бенчмарки против целей АРХ §2, контракт C7 проверен линтером и по живому
+сервису; README закрывает весь чек-лист «Формата сдачи» КЕЙСА.
+
+### 7.1. Решения этапа
+
+| # | Решение | Почему |
+|---|---|---|
+| 1 | Взвешенный Левенштейн по кодовым точкам: замена из таблицы путаницы OCR (O↔0, B↔8, S↔5, I↔1, Z↔2) — 0,3, прочие операции — 1 | АРХ §7.2; по кодовым точкам — кириллица в теле номера (`AЯ46`) считается одной правкой |
+| 2 | Кандидаты: `serial_index` по серии и году запроса + варианты серии с одной заменой цифры (длина × 9) + серия, где буквы-двойники цифр (O, B, S, I, Z) заменены цифрами | Дешевле BK-дерева (АРХ §7.2); OCR путает цифры и буквы именно в серии |
+| 3 | Порог: лучший кандидат с расстоянием ≤ 2 и отрывом от второго ≥ 0,5 → `needs_confirmation` («Это номер …?»); иначе `not_found` и до 3 ближайших | АРХ §7.2: любое ненулевое расстояние — вопрос, а не молчаливая подмена |
+| 4 | «Да» подтверждает номер из `check_log` пользователя: `DomainService::confirm(check_id)` перепроверяет подсказку и пишет новую проверку; кнопки `y:<check_id>` / `n:<check_id>` | АРХ §8 (payload `y:`/`n:`); аргумент — id БД, владелец проверяется доменом |
+| 5 | Fuzz — отдельный пресет `fuzz` (clang, `-fsanitize=fuzzer,address,undefined`), цели в `fuzz/`, стартовые корпуса в `fuzz/corpus/<цель>`, smoke 60 с на цель в CI (матрица) | АРХ §10 |
+| 6 | TSan — пресет `clang-tsan`, отдельный тест `concurrency_test` (замена снапшота под нагрузкой читателей, лимитер) без Drogon/libpq; пул распознавания в него не входит — он построен на `trantor::EventLoopThreadPool`, а неинструментированный trantor дал бы ложные срабатывания; пул покрыт `certd_test` под ASan | Неинструментированные библиотеки дают ложные срабатывания; гонки нашего кода проверяются полностью |
+| 7 | Бенчмарки — Google Benchmark на синтетическом снапшоте (по умолчанию 1 млн записей), перцентили p50/p99 считаются счётчиками; `scripts/ci/bench.sh` сверяет p99 с целями | АРХ §2: точный ≤ 1 мс, нечёткий ≤ 5 мс |
+| 8 | Линтер OpenAPI — `@redocly/cli lint` (npm, версия закреплена); контрактные тесты — schemathesis 4.28.0 (Docker-образ) против compose-стека в боевом режиме: тестовый токен, initData подписана по алгоритму MAX, dev-вход выключен; проверка `unsupported_method` заменена своей (405 + `Allow` на PUT/PATCH, ADR-0016) | АРХ §10 «Интеграция»; ни одной C++-зависимости не добавляется; dev-режим прятал бы проверку авторизации |
+| 9 | Долги этапа 2: согласие в мини-приложении (`POST /me/consent`, REST проверяет согласие), «Подробнее» (`start_param`) открывает документ | docs/plan.md §6.3 |
+
+### 7.2. Работы
+
+| # | Модуль | Результат | Тест |
+|---|---|---|---|
+| 3.1 | `libs/verify` | `weighted_distance`, `fuzzy_match` (кандидаты, порог, отрыв), правило `fuzzy.confirm` | `FuzzyTest.*`, property «нечёткий ≡ перебор» на 10 000 записей |
+| 3.2 | `apps/certd`, `bot`, `web` | `confirm(check_id)` (C6), кнопки `y:`/`n:`, «Это номер …?» в мини-приложении | `BotTest.*`, `DomainPgTest.*`, `Add.test.tsx` |
+| 3.3 | `fuzz/` | цели: `canon`, `snapshot_reader`, `update_json`, `init_data`, `demo_tsv`, `outbox_json`, `weighted_distance` | smoke 60 с каждая |
+| 3.4 | `tests/concurrency` | замена снапшотов под нагрузкой, лимитер | TSan без находок |
+| 3.5 | `bench/` | точный/нечёткий поиск, канонизация, diff, сборка снапшота | `scripts/ci/bench.sh` против целей АРХ §2 |
+| 3.6 | `openapi.yaml`, CI | линтер, schemathesis в compose | зелёные в CI |
+| 3.7 | долги этапа 2 | согласие в мини-приложении, `start_param` | `RestApi*`, `App.test.tsx` |
+| 3.8 | `README.md` | все пункты «Формата сдачи» КЕЙС §4 | чек-лист |
+
+### 7.3. Заглушки и отложенное после этапа 3
+
+| Что | Сейчас | Когда |
+|---|---|---|
+| OCR фото (F2 для снимков) | `recog` отвечает «пришлите PDF»; пакеты Tesseract не ставятся в образ ([ADR-0017](adr/0017-tesseract-with-ocr-stage.md)) | этап 4 |
+| Импорт CSV (F9), `openCodeReader` (F10), SKU в мини-приложении | нет | этап 4 |
+| Источник ФСА (`ingest --once`) | демо-данные N / N+1 | после подтверждения данных |
+| `TRACE` → 405 без `Allow` | ограничение Drogon 1.8.7, ADR-0016 | — |
+
+### 7.4. Результат ворот этапа 3 (чистый клон, `scripts/gate.sh`)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 (unity) и clang 18 с `-Werror`, clang-tidy (72 файла), clang-format, ESLint, tsc strict, линтер OpenAPI (@redocly/cli) | 0 ошибок, 0 предупреждений |
+| 2 | Тесты ×2, ASan/UBSan, TSan | C++ 230/230 (каждый дважды, с PostgreSQL 16, 0 пропущенных — и на хосте, и в контейнере ворот); web 65/65 (дважды); ASan/UBSan без находок; TSan (`concurrency_test`, 2 теста) без находок |
+| 3 | Покрытие | C++ 89,3% строк (3348/3749); web 99,31% строк |
+| 4 | Шаги CI локально | все зелёные; новые: TSan, fuzz smoke (7 целей × 60 с), бенчмарки, линтер OpenAPI, контрактные тесты schemathesis |
+| 5 | `docker build --no-cache` / compose | CI (раннер GitHub, PR #3, запуск 17): вся задача Docker — сборка `--no-cache`, compose-smoke и контрактные тесты — 1 мин 36 с, порог 240 с выполнен. На стенде разработки — 294 с из-за канала 0,3–0,8 МБ/с (apt 259 с, компиляция 25 с); `compose-smoke` → `/healthz` 200, `/` 200, согласие 204, `/api/v1/check` → `ok` |
+| 6 | Критерии F этапа | таблица 7.5 |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонения — ADR-0015 (libcurl), [ADR-0016](adr/0016-trace-405-without-allow.md) (`TRACE`), [ADR-0017](adr/0017-tesseract-with-ocr-stage.md) (Tesseract — на этапе 4) |
+| 8 | Документация | корневой README по КЕЙС §4, README модулей, CLAUDE.md, этот план, `openapi.yaml` 1.3.0, `docs/rules.md`, журнал контрактов |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ в `git log` нет |
+
+Бенчмарки (1 млн записей, `scripts/ci/bench.sh`): точный поиск p50 1,5 мкс / p99 3,3 мкс (цель ≤ 1 мс), нечёткий
+p50 135 мкс / p99 289 мкс (цель ≤ 5 мс), «нет в данных» p99 10 мкс, diff 78 мс.
+
+Найдено и исправлено воротами этапа:
+- проверка в MAX (коллеги): бот не отвечал на номер, кнопки «Согласен» и «Как это работает» не срабатывали — в
+  `MAX_BOT_USERNAME` было отображаемое имя бота, и MAX отвергал каждое сообщение с кнопкой `open_app` (HTTP 404
+  `Link not found`). Username теперь берётся из `GET /me` (`bot_identity.hpp`), переменная — запасное значение;
+  набранные `/start` и `/help` отвечают справкой (раньше — «Не нашёл номер»). В мини-приложении статус в заголовке
+  карточки слипался с номером («…/26действует»).
+- fuzz: jsoncpp бросает `Json::RuntimeError` на вложенности глубже `stackLimit` — разбор в `maxapi` и тело
+  `POST /portfolio` теперь дают ошибку данных (раньше REST отвечал 500); ридер снапшота принимал пустую секцию со
+  смещением за файлом (UB при `base + offset`). Входы сохранены в корпусах как `regression-*`, добавлены юнит-тесты.
+- schemathesis: неизвестные и пустые параметры запроса принимались молча; `PUT`/`GET` на `/portfolio/{id}` давали 404
+  вместо 405 (Drogon 1.8.7 на маршрутах с параметром).
+- ворота: dev-образ не собирался с нуля (`.dockerignore` исключал `scripts/`, нужный `dev.Dockerfile`) — у него свой
+  `docker/dev.Dockerfile.dockerignore`, тег образа — хеш входных файлов; в dev-контейнере не было Docker, и `with-pg.sh` пропускал тесты с БД, а провал `ASSERT` в `SetUpTestSuite`
+  gtest печатает как SKIPPED — ctest засчитывал такие тесты пройденными. Теперь база поднимается на хосте
+  (`SK_REQUIRE_PG=1` делает пропуск ошибкой, и в CI тоже), фикстуры проверяют готовность в `SetUp`, в dev-образ
+  добавлен CLI `openssl` (TlsTest). gcov давал отрицательные счётчики на многопоточных тестах — `-fprofile-update=atomic`.
+
+### 7.5. F-требования этапа 3 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F1 (полностью) | Номер с 1–2 ошибками распознавания находится; любое ненулевое расстояние — вопрос «Это номер …?», а не подмена | `libs/verify/src/fuzzy.cpp` (`weighted_distance`, `fuzzy_match`), `verify.cpp` (`needs_confirmation`), `DomainServiceImpl::confirm`, `bot/card.cpp` (`confirm_question`), `bot.cpp` (`y:`/`n:`), `web/src/screens/Add.tsx` («Да, проверить») | `WeightedDistance.Costs`, `FuzzyTest.OcrStringFromArchitecture`, `FuzzyTest.DistortedSerialFoundByVariants`, `FuzzyTest.AmbiguousOrFarIsNotConfident`, `FuzzyTest.ExactMatchIsNotFuzzy`, `FuzzyProperty.MatchesBruteForceOn10kRecords`, `DomainPgTest.FuzzyNumberConfirmed`, `BotTest.ConfirmSuggestedNumber`, `Card.NeedsConfirmationAsksQuestion`, web `Add.test.tsx` «подсказка → «Да, проверить» → карточка» |
+| F1 (скорость) | Точный ≤ 1 мс, нечёткий ≤ 5 мс (p99) | `libs/snapshot` (mmap, `serial_index`), `libs/verify` | `bench/search_bench.cpp` + `scripts/ci/bench.sh` (порог в CI) |
+| Долги этапа 2 | Согласие в мини-приложении; «Подробнее» открывает документ | `rest_api.cpp` (`authorize`, `consent`), `web/src/components/ConsentGate.tsx`, `bot/card.cpp` (`document_start_param`), `web/src/max/bridge.ts` (`getStartTarget`) | `RestApiTest.ConsentRequired`, web `ConsentGate.test.tsx`, `Card.DocumentStartParamFitsMaxLimits`, web `App.test.tsx` «Подробнее из бота открывает документ», `bridge.test.ts` |
+| Проверка в MAX | Кнопки и карточки бота доходят до пользователя; `/start` — справка; статус в заголовке карточки web | `bot_identity.cpp` (`GET /me`), `maxapi` `get_me`/`parse_bot_info`, `bot.cpp` (`split_bot_command`), `web/src/components/VerdictCard.tsx` | `BotIdentity.UsernameFromGetMe`, `HttpBotApiTest.GetMeReturnsUsername`, `BotInfo.Parse`, `BotTest.StartAndHelpCommands`, `BotTest.StartCommandWithoutConsentAsksForIt`, web `Add.test.tsx`, fuzz `fuzz_update_json` |
+| Надёжность (АРХ §10) | fuzz, TSan, контракт C7 | `fuzz/`, `tests/concurrency/`, `openapi.yaml`, `scripts/ci/contract-test.sh` | fuzz smoke 7 × 60 с, `SnapshotSwap.*`, `RateLimiterConcurrency.*`, schemathesis (все проверки) + 405/`Allow` |
+

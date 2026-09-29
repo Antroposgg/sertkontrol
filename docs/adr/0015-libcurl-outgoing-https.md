@@ -1,4 +1,4 @@
-# ADR-0014: Исходящие HTTPS-запросы к MAX — libcurl, а не `drogon::HttpClient`
+# ADR-0015: Исходящие HTTPS-запросы к MAX — libcurl, а не `drogon::HttpClient`
 
 - Статус: принят
 - Дата: 2026-09-29

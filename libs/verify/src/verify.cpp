@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "sertkontrol/verify/fuzzy.hpp"
 #include "sertkontrol/verify/text.hpp"
 #include "sertkontrol_contracts.hpp"
 
@@ -18,25 +19,6 @@ namespace sk::verify {
 namespace {
 
 using snapshot::Status;
-
-/// Расстояние Левенштейна по байтам — только для ранжирования ближайших номеров на этапе 1.
-/// Взвешенное расстояние с таблицей путаницы OCR — этап 3 (АРХ §7.2).
-std::size_t levenshtein(std::string_view a, std::string_view b) {
-  std::vector<std::size_t> prev(b.size() + 1);
-  std::vector<std::size_t> cur(b.size() + 1);
-  for (std::size_t j = 0; j <= b.size(); ++j) {
-    prev[j] = j;
-  }
-  for (std::size_t i = 1; i <= a.size(); ++i) {
-    cur[0] = i;
-    for (std::size_t j = 1; j <= b.size(); ++j) {
-      const std::size_t subst = prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
-      cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1, subst});
-    }
-    std::swap(prev, cur);
-  }
-  return prev[b.size()];
-}
 
 int year_of(Date date) {
   return static_cast<int>(std::chrono::year_month_day{date}.year());
@@ -135,31 +117,6 @@ void apply_rules(const snapshot::RecordView& rec, Date today, Verdict& v) {
   }
 }
 
-/// До `kMaxSuggestions` номеров той же серии и года, по возрастанию расстояния.
-std::vector<Suggestion> nearest(const snapshot::Snapshot& snap, const std::string& canonical) {
-  const auto parsed = canon::parse(canonical);
-  if (!parsed) {
-    return {};
-  }
-  std::vector<Suggestion> out;
-  for (const auto idx : snap.by_serial(parsed->serial, parsed->year)) {
-    const auto rec = snap.record(idx);
-    if (rec.number == canonical) {
-      continue;
-    }
-    out.push_back({.number = std::string{rec.number},
-                   .distance = static_cast<double>(levenshtein(canonical, rec.number))});
-  }
-  std::ranges::sort(out, [](const Suggestion& a, const Suggestion& b) {
-    return std::pair{a.distance, std::string_view{a.number}} <
-           std::pair{b.distance, std::string_view{b.number}};
-  });
-  if (out.size() > kMaxSuggestions) {
-    out.resize(kMaxSuggestions);
-  }
-  return out;
-}
-
 }  // namespace
 
 Verdict check(const snapshot::Snapshot& snap, const Query& query) {
@@ -202,9 +159,22 @@ Verdict check(const snapshot::Snapshot& snap, const Query& query) {
     return v;
   }
 
-  v.level = Level::kNotFound;
-  v.suggestions = nearest(snap, *canonical);
+  // Нечёткий поиск (АРХ §7.2): любое ненулевое расстояние — вопрос «Это номер …?», а не молчаливая подмена.
+  auto fuzzy = fuzzy_match(snap, *canonical);
+  if (fuzzy.ranked.size() > kMaxSuggestions) {
+    fuzzy.ranked.resize(kMaxSuggestions);
+  }
+  v.suggestions = std::move(fuzzy.ranked);
+  v.level = fuzzy.confident ? Level::kNeedsConfirmation : Level::kNotFound;
   add(v, Basis::kFact, "not_found", "Номера нет в данных реестра на " + format_date(v.data_date));
+  if (fuzzy.confident) {
+    const auto& best = v.suggestions.front();
+    v.distance = best.distance;
+    add(v, Basis::kCalculation, "fuzzy.match",
+        "Похоже на номер " + display_number(best.number) + " — возможна ошибка распознавания или опечатка");
+    add(v, Basis::kRecommendation, "advice.confirm_number", "Подтвердите номер — покажем его карточку");
+    return v;
+  }
   if (registered_in_data_year(*canonical, v.data_date)) {
     // V5: документ текущего года мог быть зарегистрирован после даты данных — выписка 89369/26 из спайка
     // сформирована в день регистрации (ТЗ R2, каталог правил).

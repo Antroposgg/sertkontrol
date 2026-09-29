@@ -16,7 +16,7 @@ describe('Добавить', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
     expect(api.check).toHaveBeenCalledWith('RU Д-CR.PA08.B.89369/26');
     const card = await screen.findByRole('article');
-    expect(card).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26');
+    expect(card).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26 — действует');
     for (const section of ['Факт', 'Расчёт', 'Рекомендация']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument();
     }
@@ -41,7 +41,7 @@ describe('Добавить', () => {
     await userEvent.type(screen.getByLabelText('Номер документа'), 'RU Д-CR.PA07.B.89369/26');
     await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
     const card = await screen.findByRole('article');
-    expect(card).toHaveTextContent('Нет в данных реестра');
+    expect(card).toHaveTextContent('— нет в данных реестра');
     expect(card).toHaveTextContent('Похожие номера: RU Д-CR.PA09.B.89369/26');
     expect(screen.queryByText('Открыть в реестре')).not.toBeInTheDocument();
   });
@@ -78,5 +78,29 @@ describe('Добавить', () => {
   it('кнопка «Проверить» неактивна без номера', () => {
     renderWithApi(<Add />, fakeApi());
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled();
+  });
+});
+
+describe('Добавить — «Это номер …?»', () => {
+  it('подсказка → «Да, проверить» → карточка точного номера', async () => {
+    const question = {
+      ...verdict,
+      check_id: 5,
+      level: 'needs_confirmation' as const,
+      number: 'RUD-CB.PAO8.B.89369/26',
+      display_number: 'RU Д-CB.PAO8.B.89369/26',
+      card: null,
+      distance: 1.3,
+      suggestions: [{ number: 'RUD-CR.PA08.B.89369/26', display_number: 'RU Д-CR.PA08.B.89369/26', distance: 1.3 }],
+    };
+    const check = vi.fn().mockResolvedValueOnce(question).mockResolvedValueOnce(verdict);
+    renderWithApi(<Add />, fakeApi({ check }));
+    await userEvent.type(screen.getByLabelText('Номер документа'), 'ЕАЭС М RU ДСВ.РАО8.В.89369/26');
+    await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    expect(await screen.findByText('❓ Это номер RU Д-CR.PA08.B.89369/26?')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'На контроль' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Да, проверить' }));
+    expect(check).toHaveBeenLastCalledWith('RUD-CR.PA08.B.89369/26');
+    expect(await screen.findByRole('button', { name: 'На контроль' })).toBeInTheDocument();
   });
 });

@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Выполняет команду с временным PostgreSQL 16 (миграции применены) и строкой подключения в SK_TEST_PG.
-# Если SK_TEST_PG уже задан — использует его. Без Docker тесты с БД пропускаются (GTEST_SKIP) с предупреждением.
+# Если SK_TEST_PG уже задан — использует его. Без Docker тесты с БД пропускаются (GTEST_SKIP) с предупреждением,
+# а при SK_REQUIRE_PG=1 — ошибка.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 if [[ -n "${SK_TEST_PG:-}" ]]; then
   exec "$@"
 fi
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  # SK_REQUIRE_PG=1 (ворота): пропуск тестов с БД — ошибка, а не предупреждение.
+  if [[ "${SK_REQUIRE_PG:-0}" == 1 ]]; then
+    echo "::error::Docker недоступен и SK_TEST_PG не задан, а SK_REQUIRE_PG=1" >&2
+    exit 1
+  fi
   echo "::warning::Docker недоступен — тесты с PostgreSQL будут пропущены" >&2
   exec "$@"
 fi

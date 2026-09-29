@@ -20,3 +20,6 @@
 | [0012](0012-mintsifry-root-ca.md) | Корневой сертификат Минцифры в образе certd | принят | этап 1 |
 | [0013](0013-dev-auth-without-max.md) | Мини-приложение без MAX при локальном запуске — dev-пользователь | принят | этап 1 |
 | [0014](0014-history-and-demo-endpoints.md) | История — `GET /history?number=`; `simulate-update` → `200 {notified}`; `POST /demo/reset` | принят | этап 2 |
+| [0015](0015-libcurl-outgoing-https.md) | Исходящие HTTPS-запросы к MAX — libcurl (trantor из apt без TLS) | принят | после этапа 2 |
+| [0016](0016-trace-405-without-allow.md) | Контрактные тесты без `unsupported_method` schemathesis: `TRACE` в Drogon 1.8.7 — 405 без `Allow` | принят | этап 3 |
+| [0017](0017-tesseract-with-ocr-stage.md) | Tesseract ставится в образ вместе с OCR (этап 4), а не заранее | принят | этап 3 |

@@ -38,6 +38,7 @@ enum class ErrorCode : std::uint8_t {
   kNotFoundInSnapshot,
   kSnapshotUnavailable,
   kRateLimited,
+  kConsentRequired,  ///< Нет согласия на обработку данных (АРХ §10).
   kInternal,
 };
 
@@ -68,6 +69,8 @@ enum class ErrorCode : std::uint8_t {
       return "snapshot_unavailable";
     case ErrorCode::kRateLimited:
       return "rate_limited";
+    case ErrorCode::kConsentRequired:
+      return "consent_required";
     case ErrorCode::kInternal:
       return "internal";
   }

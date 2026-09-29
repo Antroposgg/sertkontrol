@@ -1,6 +1,8 @@
 #include "bot.hpp"
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -27,6 +29,22 @@ std::string_view trimmed(std::string_view s) {
 
 bool all_digits(std::string_view s) {
   return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
+}
+
+/// Команда `/start` или `/help` (в т. ч. `/start@имя_бота`) в начале текста → текст после неё; иначе
+/// `nullopt`. Набранный `/start` приходит обычным `message_created` — `bot_started` MAX шлёт только при
+/// первом запуске.
+std::optional<std::string> split_bot_command(std::string_view text) {
+  const auto t = trimmed(text);
+  const auto end = t.find_first_of(" \t\r\n");
+  const auto token = t.substr(0, end);
+  const auto is = [&](std::string_view cmd) {
+    return token == cmd || (token.starts_with(cmd) && token.size() > cmd.size() && token[cmd.size()] == '@');
+  };
+  if (!is("/start") && !is("/help")) {
+    return std::nullopt;
+  }
+  return std::string{end == std::string_view::npos ? std::string_view{} : trimmed(t.substr(end))};
 }
 
 bool looks_like_pdf(const maxapi::Attachment& a) {
@@ -87,6 +105,15 @@ drogon::Task<std::string> Bot::on_message(maxapi::MessageCreated e) {
   }
   if (!me.value().consented) {
     co_return co_await send(welcome(user), kPriorityReply);
+  }
+
+  // `/start`, `/help`: справка; текст после команды («/start ЕАЭС N …») проверяется как обычно.
+  if (auto rest = split_bot_command(e.text); rest.has_value() && e.attachments.empty()) {
+    (void)co_await dialogs_.clear(user);
+    if (rest->empty()) {
+      co_return co_await send(help(user, config_.card), kPriorityReply);
+    }
+    e.text = std::move(*rest);
   }
 
   // Незавершённый диалог: ответ на «Указать поставщика». Вложение или посторонний текст сбрасывают его.
@@ -203,6 +230,22 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
     }
     (void)co_await api_.answer_callback(e.callback_id, std::move(note));
     co_return std::string{};
+  }
+  if (cb->action == 'y') {
+    auto r = co_await domain_.confirm(ctx(user), cb->arg);
+    std::string note = "Проверяю номер";
+    if (!r) {
+      note = "Подсказка устарела — пришлите номер ещё раз";
+    }
+    (void)co_await api_.answer_callback(e.callback_id, std::move(note));
+    if (!r) {
+      co_return co_await send(ask_number(user), kPriorityReply);
+    }
+    co_return co_await send_result(user, std::move(r));
+  }
+  if (cb->action == 'n') {
+    (void)co_await api_.answer_callback(e.callback_id, "");
+    co_return co_await send(ask_number(user), kPriorityReply);
   }
   if (cb->action == 'W') {
     const auto r = co_await domain_.add_batch(ctx(user), cb->arg);

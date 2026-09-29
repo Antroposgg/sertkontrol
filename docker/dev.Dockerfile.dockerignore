@@ -1,0 +1,6 @@
+# Контекст dev-образа (BuildKit берёт этот файл вместо корневого .dockerignore, где scripts/ исключён):
+# только то, что копирует docker/dev.Dockerfile.
+*
+!docker/apt-build-deps.txt
+!docker/apt-dev-tools.txt
+!scripts/ci/install-deps.sh

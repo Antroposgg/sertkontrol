@@ -60,3 +60,11 @@ describe('createSertkontrolApi', () => {
     expect((form as FormData).get('file')).toBeInstanceOf(File);
   });
 });
+
+describe('consent', () => {
+  it('POST /me/consent без тела', async () => {
+    const c = fakeClient();
+    await createSertkontrolApi(c).consent();
+    expect(c.calls).toEqual([['/me/consent']]);
+  });
+});

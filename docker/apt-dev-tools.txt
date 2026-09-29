@@ -10,4 +10,6 @@ gcovr
 gitleaks
 git
 curl
+# CLI openssl: TlsTest поднимает `openssl s_server` с самоподписанным сертификатом.
+openssl
 postgresql-client-16

@@ -106,6 +106,10 @@ export function Add() {
                     <VerdictCard
                       verdict={v}
                       {...(status === 'done' ? {} : { onWatch: () => { watch(v); } })}
+                      onConfirm={(n) => {
+                        setNumber(n);
+                        run(() => api.check(n).then((checked) => [checked]));
+                      }}
                       watching={status === 'saving'}
                     />
                     {status === 'done' && <p role="status">На контроле — пришлём уведомление в чат, если статус изменится.</p>}

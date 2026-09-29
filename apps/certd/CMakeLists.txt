@@ -15,6 +15,7 @@ add_library(sk_certd_core STATIC
   rest_api.cpp
   pg_ports.cpp
   webhook.cpp
+  bot_identity.cpp
   bot/card.cpp
   bot/bot.cpp)
 add_library(sk::certd_core ALIAS sk_certd_core)

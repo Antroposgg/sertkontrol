@@ -10,6 +10,7 @@
 #include <trantor/net/EventLoopThreadPool.h>
 
 #include "curl_http.hpp"
+#include "json_parse.hpp"
 #include "sertkontrol/maxapi/auth.hpp"
 #include "sertkontrol/maxapi/bot_api.hpp"
 
@@ -106,14 +107,46 @@ drogon::Task<Result<Ok>> HttpBotApi::post(std::string path_and_query, std::strin
   }
   // `/answers` отвечает 200 и `success: false` при логической ошибке.
   Json::Value json;
-  const Json::CharReaderBuilder builder;
-  std::string errs;
-  const std::unique_ptr<Json::CharReader> reader{builder.newCharReader()};
-  if (reader->parse(resp.body.data(), resp.body.data() + resp.body.size(), &json, &errs) && json.isObject() &&
-      json.isMember("success") && !json["success"].asBool()) {
-    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + json["message"].asString()};
+  if (detail::parse_json(resp.body, json) && json.isObject() && json["success"].isBool() &&
+      !json["success"].asBool()) {
+    std::string message = "без пояснения";
+    if (json["message"].isString()) {
+      message = json["message"].asString();
+    }
+    co_return Error{ErrorCode::kInvalidArgument, "MAX API: " + message};
   }
   co_return Ok{};
+}
+
+Result<BotInfo> parse_bot_info(std::string_view json) {
+  Json::Value v;
+  if (!detail::parse_json(json, v) || !v.isObject() || !v["user_id"].isInt64() ||
+      !(v["username"].isNull() || v["username"].isString())) {
+    return Error{ErrorCode::kInvalidArgument, "GET /me: ожидается объект с user_id и username"};
+  }
+  BotInfo info{.user_id = v["user_id"].asInt64()};
+  if (v["username"].isString() && !v["username"].asString().empty()) {
+    info.username = v["username"].asString();
+  }
+  return info;
+}
+
+drogon::Task<Result<BotInfo>> HttpBotApi::get_me() {
+  detail::HttpRequest req{.method = "GET",
+                          .url = config_.base_url + "/me",
+                          .headers = {"Authorization: " + config_.token},
+                          .timeout_seconds = config_.timeout_seconds,
+                          .max_response_bytes = std::size_t{64} * 1024,
+                          .allow_http = config_.base_url.starts_with("http://"),
+                          .ca_file = config_.ca_file};
+  const auto resp = co_await impl_->run(std::move(req));
+  if (resp.status == 0) {
+    co_return Error{ErrorCode::kInternal, "MAX API недоступен: " + resp.error};
+  }
+  if (resp.status != 200) {
+    co_return from_status(static_cast<int>(resp.status), resp.body);
+  }
+  co_return parse_bot_info(resp.body);
 }
 
 drogon::Task<Result<Ok>> HttpBotApi::send_message(OutgoingMessage msg) {

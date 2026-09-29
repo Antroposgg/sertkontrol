@@ -37,6 +37,13 @@ class RestApiTest : public ::testing::Test {
                            year{2026} / month{9} / day{26}};
   RestApi api{domain, AuthConfig{.bot_token = std::string{kToken}, .now = test_now}};
 
+  // Пользователи тестов уже дали согласие; отказ без согласия — RestApiTest.ConsentRequired.
+  void SetUp() override {
+    for (const auto user : {kAlice, kBob}) {
+      ASSERT_TRUE(drogon::sync_wait(domain.give_consent({.max_user_id = user})));
+    }
+  }
+
   static drogon::HttpRequestPtr as(long long user, drogon::HttpMethod method = drogon::Get) {
     auto req = drogon::HttpRequest::newHttpRequest();
     req->setMethod(method);
@@ -80,6 +87,23 @@ class RestApiTest : public ::testing::Test {
     return drogon::sync_wait(api.add_to_portfolio(json_as(user, b)));
   }
 };
+
+// АРХ §10: без согласия данные не обрабатываются — REST отвечает 403 consent_required, /me и /data-status
+// доступны.
+TEST_F(RestApiTest, ConsentRequired) {
+  constexpr long long kNew = 303;
+  auto check = as(kNew);
+  check->setParameter("number", "RU D-CR.PA08.B.89369/26");
+  expect_problem(drogon::sync_wait(api.check(check)), 403, "consent_required");
+  expect_problem(drogon::sync_wait(api.list_portfolio(as(kNew))), 403, "consent_required");
+  EXPECT_FALSE(body(drogon::sync_wait(api.me(as(kNew))))["consented"].asBool());
+  EXPECT_EQ(drogon::sync_wait(api.data_status(as(kNew)))->getStatusCode(), drogon::k200OK);
+  EXPECT_EQ(drogon::sync_wait(api.consent(as(kNew, drogon::Post)))->getStatusCode(), drogon::k204NoContent);
+  EXPECT_EQ(drogon::sync_wait(api.consent(as(kNew, drogon::Post)))->getStatusCode(), drogon::k204NoContent);
+  EXPECT_TRUE(body(drogon::sync_wait(api.me(as(kNew))))["consented"].asBool());
+  EXPECT_EQ(drogon::sync_wait(api.check(check))->getStatusCode(), drogon::k200OK);
+  expect_problem(drogon::sync_wait(api.consent(drogon::HttpRequest::newHttpRequest())), 401, "unauthorized");
+}
 
 TEST_F(RestApiTest, RequiresValidInitData) {
   auto req = drogon::HttpRequest::newHttpRequest();
@@ -126,6 +150,34 @@ TEST_F(RestApiTest, CheckByNumber) {
   auto bad = as(kAlice);
   bad->setParameter("number", "привет");
   expect_problem(drogon::sync_wait(api.check(bad)), 422, "number_not_recognized");
+}
+
+// Параметр вне C7 — 400: опечатка в фильтре не должна молча возвращать весь портфель.
+TEST_F(RestApiTest, UnknownQueryParameterRejected) {
+  auto check = as(kAlice);
+  check->setParameter("number", "RU D-CR.PA08.B.89369/26");
+  check->setParameter("nubmer", "1");
+  expect_problem(drogon::sync_wait(api.check(check)), 400, "invalid_argument");
+  auto list = as(kAlice);
+  list->setParameter("stauts", "active");
+  expect_problem(drogon::sync_wait(api.list_portfolio(list)), 400, "invalid_argument");
+  auto history = as(kAlice);
+  history->setParameter("number", "RU D-CR.PA08.B.89369/26");
+  history->setParameter("x", "1");
+  expect_problem(drogon::sync_wait(api.history(history)), 400, "invalid_argument");
+  for (const auto* name : {"status", "cursor", "limit"}) {
+    auto empty = as(kAlice);
+    empty->setParameter(name, "");
+    expect_problem(drogon::sync_wait(api.list_portfolio(empty)), 400, "invalid_argument");
+  }
+  for (const auto* cursor : {"-1", "+1", "1234567890123456789"}) {
+    auto bad = as(kAlice);
+    bad->setParameter("cursor", cursor);
+    expect_problem(drogon::sync_wait(api.list_portfolio(bad)), 400, "invalid_argument");
+  }
+  auto ok = as(kAlice);
+  ok->setParameter("limit", "10");
+  EXPECT_EQ(drogon::sync_wait(api.list_portfolio(ok))->getStatusCode(), drogon::k200OK);
 }
 
 std::string multipart(const std::string& boundary, const std::string& content) {
@@ -209,6 +261,15 @@ TEST_F(RestApiTest, AddValidatesBody) {
   auto no_json = as(kAlice, drogon::Post);
   no_json->setBody("number=1");
   expect_problem(drogon::sync_wait(api.add_to_portfolio(no_json)), 400, "invalid_argument");
+  // Вложенность глубже stackLimit jsoncpp — 400, а не исключение и 500.
+  auto deep = as(kAlice, drogon::Post);
+  deep->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+  deep->setBody(std::string(5000, '[') + std::string(5000, ']'));
+  expect_problem(drogon::sync_wait(api.add_to_portfolio(deep)), 400, "invalid_argument");
+  // Корректный JSON без Content-Type: application/json не разбирается (как getJsonObject).
+  auto plain = as(kAlice, drogon::Post);
+  plain->setBody(R"({"number":"RU D-CR.PA08.B.89369/26"})");
+  expect_problem(drogon::sync_wait(api.add_to_portfolio(plain)), 400, "invalid_argument");
   Json::Value bad_sku;
   bad_sku["number"] = "RU D-CR.PA08.B.89369/26";
   bad_sku["sku"] = 5;
@@ -244,6 +305,8 @@ TEST(RestApiDemo, SimulateHistoryAndReset) {
   FakeDomainService domain{fake::FakeSnapshot::three_records(), updated_snapshot(),
                            year{2026} / month{9} / day{26}};
   RestApi api{domain, AuthConfig{.bot_token = std::string{kToken}, .now = test_now}};
+  ASSERT_TRUE(drogon::sync_wait(domain.give_consent({.max_user_id = kAlice})));
+  ASSERT_TRUE(drogon::sync_wait(domain.give_consent({.max_user_id = kBob})));
   const auto as = [](long long user, drogon::HttpMethod method = drogon::Get) {
     auto req = drogon::HttpRequest::newHttpRequest();
     req->setMethod(method);
@@ -304,6 +367,28 @@ TEST(RestApiDevAuth, DevUserOnlyWithoutToken) {
   // С токеном dev-режим не действует даже при заданном dev_user_id.
   const RestApi prod{domain, AuthConfig{.bot_token = "t", .dev_user_id = 7}};
   EXPECT_FALSE(prod.authenticate(drogon::HttpRequest::newHttpRequest()).has_value());
+}
+
+// Явные 405 на /portfolio/{id} — не операции API: DELETE остаётся операцией, чужие пути не задеты.
+TEST(AllowHeader, Explicit405Routes) {
+  EXPECT_TRUE(is_explicit_405("/api/v1/portfolio/{1}", drogon::Put));
+  EXPECT_TRUE(is_explicit_405("/api/v1/portfolio/{1}", drogon::Get));
+  EXPECT_FALSE(is_explicit_405("/api/v1/portfolio/{1}", drogon::Delete));
+  EXPECT_FALSE(is_explicit_405("/api/v1/portfolio", drogon::Get));
+}
+
+TEST(AllowHeader, MethodsOfMatchingRoutes) {
+  const std::vector<Route> routes{{.pattern = "/api/v1/portfolio", .method = drogon::Get},
+                                  {.pattern = "/api/v1/portfolio", .method = drogon::Post},
+                                  {.pattern = "/api/v1/portfolio/{1}", .method = drogon::Delete},
+                                  {.pattern = "/healthz", .method = drogon::Get},
+                                  {.pattern = "/healthz", .method = drogon::Get}};
+  EXPECT_EQ(allowed_methods("/api/v1/portfolio", routes), "GET, POST");
+  EXPECT_EQ(allowed_methods("/api/v1/portfolio/", routes), "GET, POST");
+  EXPECT_EQ(allowed_methods("/api/v1/portfolio/17", routes), "DELETE");
+  EXPECT_EQ(allowed_methods("/healthz", routes), "GET");
+  EXPECT_EQ(allowed_methods("/api/v1/portfolio/17/x", routes), "");
+  EXPECT_EQ(allowed_methods("/nope", routes), "");
 }
 
 }  // namespace

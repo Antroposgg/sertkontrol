@@ -30,6 +30,13 @@ struct CardOptions {
 /// «Факт / Расчёт / Рекомендация» (F3).
 [[nodiscard]] maxapi::OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& v,
                                                    const CardOptions& options);
+/// Параметр запуска мини-приложения для экрана «Документ»: `doc-` + hex UTF-8 номера. В `start_param` MAX
+/// допускает только `[\w-]{0,512}`, а в номере есть `.` и `/` (номер ≤ 40 символов → ≤ 164 символа).
+[[nodiscard]] std::string document_start_param(std::string_view number);
+/// Вопрос «Это номер …?» с кнопками `[Да] [Ввести вручную]` (`y:`/`n:` + id проверки, АРХ §8).
+[[nodiscard]] maxapi::OutgoingMessage confirm_question(std::int64_t user, const CheckedVerdict& v);
+/// Просьба прислать номер текстом после «Ввести вручную».
+[[nodiscard]] maxapi::OutgoingMessage ask_number(std::int64_t user);
 /// Сводка по пачке из более чем `kMaxCards` номеров.
 [[nodiscard]] maxapi::OutgoingMessage summary(std::int64_t user, const CheckResult& result,
                                               const CardOptions& options);
@@ -58,7 +65,8 @@ struct CardOptions {
 
 /// Разобранный callback payload `<действие>:<аргумент>` (АРХ §8).
 struct Callback {
-  char action{0};  ///< `w` на контроль, `W` все, `d` снять, `s` поставщик, `c` согласие, `h` справка.
+  char action{0};  ///< `w` на контроль, `W` все, `d` снять, `s` поставщик, `c` согласие, `h` справка, `y`/`n`
+                   ///< подтверждение номера.
   std::int64_t arg{0};
 };
 /// `nullopt` — неизвестный формат.

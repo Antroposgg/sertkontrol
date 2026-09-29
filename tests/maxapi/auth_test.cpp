@@ -89,6 +89,7 @@ TEST(InitData, SignedButIncomplete) {
       {"no user", {{"auth_date", "1790000000"}}},
       {"bad user", {{"auth_date", "1790000000"}, {"user", "{"}}},
       {"user without id", {{"auth_date", "1790000000"}, {"user", R"({"first_name":"x"})"}}},
+      {"deep user", {{"auth_date", "1790000000"}, {"user", std::string(5000, '[') + std::string(5000, ']')}}},
   };
   for (const auto& [name, params] : cases) {
     SCOPED_TRACE(name);

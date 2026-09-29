@@ -68,6 +68,8 @@ std::string_view title(ErrorCode code) {
       return "Данные недоступны";
     case ErrorCode::kRateLimited:
       return "Слишком много запросов";
+    case ErrorCode::kConsentRequired:
+      return "Нужно согласие";
     case ErrorCode::kInternal:
       return "Внутренняя ошибка";
   }
@@ -84,6 +86,7 @@ int http_status(ErrorCode code) noexcept {
     case ErrorCode::kInitDataExpired:
       return 401;
     case ErrorCode::kForbidden:
+    case ErrorCode::kConsentRequired:
       return 403;
     case ErrorCode::kNotFound:
     case ErrorCode::kNotFoundInSnapshot:

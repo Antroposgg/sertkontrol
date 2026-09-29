@@ -93,8 +93,40 @@ OutgoingMessage help(std::int64_t user, const CardOptions& options) {
   return m;
 }
 
+std::string document_start_param(std::string_view number) {
+  static constexpr std::string_view kHex = "0123456789abcdef";
+  std::string out = "doc-";
+  for (const char c : number) {
+    const auto b = static_cast<unsigned char>(c);
+    out += kHex[b >> 4U];
+    out += kHex[b & 0x0FU];
+  }
+  return out;
+}
+
+OutgoingMessage confirm_question(std::int64_t user, const CheckedVerdict& cv) {
+  const auto& v = cv.verdict;
+  const auto& best = v.suggestions.front();
+  std::string text = "❓ Номера <b>" + html_escape(verify::display_number(v.number)) +
+                     "</b> нет в данных реестра на " + verify::format_date(v.data_date) +
+                     ".\n\nЭто номер <b>" + html_escape(verify::display_number(best.number)) +
+                     "</b>? Похоже на ошибку распознавания или опечатку.";
+  if (v.is_demo) {
+    text += "\n" + std::string{kDemoNote};
+  }
+  OutgoingMessage m{
+      .max_user_id = user, .text = std::move(text), .kind = MessageKind::kVerdict, .is_demo = v.is_demo};
+  m.buttons.push_back({{.text = "Да", .payload = "y:" + std::to_string(cv.check_id)},
+                       {.text = "Ввести вручную", .payload = "n:" + std::to_string(cv.check_id)}});
+  return m;
+}
+
 OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& cv, const CardOptions& options) {
   const auto& v = cv.verdict;
+  // АРХ §4, поток A, шаг 6: ненулевое расстояние до ближайшего номера — вопрос «Это номер …?».
+  if (v.level == verify::Level::kNeedsConfirmation && !v.suggestions.empty() && cv.check_id > 0) {
+    return confirm_question(user, cv);
+  }
   std::string text = headline(v) + "\n";
   if (v.is_demo) {
     text += std::string{kDemoNote} + "\n";
@@ -145,12 +177,18 @@ OutgoingMessage verdict_card(std::int64_t user, const CheckedVerdict& cv, const 
     row.push_back({.kind = Button::Kind::kLink, .text = "Открыть в реестре", .url = v.card->registry_url});
   }
   if (options.open_app && cv.check_id > 0) {
-    row.push_back(open_app("Подробнее", "check-" + std::to_string(cv.check_id)));
+    row.push_back(open_app("Подробнее", document_start_param(v.number)));
   }
   if (!row.empty()) {
     m.buttons.push_back(std::move(row));
   }
   return m;
+}
+
+OutgoingMessage ask_number(std::int64_t user) {
+  return {.max_user_id = user,
+          .text = "Пришлите номер документа текстом, например «ЕАЭС N RU Д-RU.РА01.В.12345/23».",
+          .kind = MessageKind::kReply};
 }
 
 OutgoingMessage summary(std::int64_t user, const CheckResult& result, const CardOptions& options) {
@@ -351,7 +389,8 @@ std::optional<Callback> parse_callback(std::string_view payload) {
     return std::nullopt;
   }
   const char action = payload[0];
-  if (action != 'w' && action != 'W' && action != 'd' && action != 's' && action != 'c' && action != 'h') {
+  if (action != 'w' && action != 'W' && action != 'd' && action != 's' && action != 'c' && action != 'h' &&
+      action != 'y' && action != 'n') {
     return std::nullopt;
   }
   std::int64_t arg = 0;

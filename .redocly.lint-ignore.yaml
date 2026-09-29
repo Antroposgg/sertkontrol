@@ -1,0 +1,5 @@
+# Точечные исключения линтера OpenAPI. Каждое — с причиной.
+openapi.yaml:
+  operation-4xx-response:
+    # /healthz — проверка готовности для Docker и Caddy: без параметров и авторизации, ответ только 200 или 503.
+    - '#/paths/~1healthz/get/responses'
