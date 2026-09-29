@@ -181,10 +181,12 @@ class MappedSnapshot final : public Snapshot {
   SnapshotMeta meta_;
 };
 
-/// Проверка секции: выравнивание и границы файла без переполнения.
+/// Проверка секции: выравнивание и границы файла без переполнения. У пустой секции (в т. ч. неиспользуемой,
+/// со смещением 0) смещение не должно выходить за файл: `base + offset` за его пределами — UB и без чтения
+/// (находка fuzz_snapshot_reader).
 bool section_ok(const fmt::SectionRef& s, std::size_t file_size) {
   if (s.size == 0) {
-    return true;
+    return s.offset <= file_size;
   }
   return s.offset >= sizeof(fmt::FileHeader) && s.offset % fmt::kSectionAlign == 0 && s.offset <= file_size &&
          s.size <= file_size - s.offset;
