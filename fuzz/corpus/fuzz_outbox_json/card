@@ -1,0 +1,1 @@
+{"version":1,"max_user_id":67890,"text":"<b>Декларация</b> действует","kind":"verdict","is_demo":true,"buttons":[[{"type":"callback","text":"На контроль","payload":"w:17"}],[{"type":"link","text":"Открыть в реестре","url":"https://pub.fsa.gov.ru/rds/declaration"},{"type":"open_app","text":"Подробнее","start_param":"doc-17"}]]}

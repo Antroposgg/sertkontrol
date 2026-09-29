@@ -1,0 +1,18 @@
+{
+  "update_type": "message_created",
+  "timestamp": 1790000000123,
+  "message": {
+    "sender": {"user_id": 67890, "first_name": "Макс", "is_bot": false, "last_activity_time": 1790000000000},
+    "recipient": {"chat_id": 555, "chat_type": "dialog", "user_id": 111},
+    "timestamp": 1790000000123,
+    "body": {
+      "mid": "mid.0000000000000001",
+      "seq": 1,
+      "text": null,
+      "attachments": [
+        {"type": "file", "payload": {"url": "https://files.example/abc", "token": "tok"}, "filename": "extract.pdf", "size": 37786}
+      ]
+    }
+  },
+  "user_locale": "ru"
+}

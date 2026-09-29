@@ -1,0 +1,7 @@
+{
+  "update_type": "message_callback",
+  "timestamp": 1790000001000,
+  "callback": {"timestamp": 1790000001000, "callback_id": "cb-42", "payload": "w:17", "user": {"user_id": 67890, "first_name": "Макс", "is_bot": false}},
+  "message": null,
+  "user_locale": "ru"
+}

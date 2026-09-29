@@ -41,6 +41,21 @@ jobs:
       - run: scripts/ci/cpp-format-check.sh
       - run: scripts/ci/cpp-tidy.sh
 
+  fuzz:
+    name: C++ · fuzz smoke (60 с на цель)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/install-deps.sh build dev
+      - run: scripts/ci/fuzz-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-findings
+          path: |
+            build/fuzz/artifacts/
+            build/fuzz/logs/
+
   cpp-coverage:
     name: C++ · покрытие ≥ 70%
     runs-on: ubuntu-24.04
