@@ -204,6 +204,22 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
     (void)co_await api_.answer_callback(e.callback_id, std::move(note));
     co_return std::string{};
   }
+  if (cb->action == 'y') {
+    auto r = co_await domain_.confirm(ctx(user), cb->arg);
+    std::string note = "Проверяю номер";
+    if (!r) {
+      note = "Подсказка устарела — пришлите номер ещё раз";
+    }
+    (void)co_await api_.answer_callback(e.callback_id, std::move(note));
+    if (!r) {
+      co_return co_await send(ask_number(user), kPriorityReply);
+    }
+    co_return co_await send_result(user, std::move(r));
+  }
+  if (cb->action == 'n') {
+    (void)co_await api_.answer_callback(e.callback_id, "");
+    co_return co_await send(ask_number(user), kPriorityReply);
+  }
   if (cb->action == 'W') {
     const auto r = co_await domain_.add_batch(ctx(user), cb->arg);
     std::string note = "Не получилось добавить";

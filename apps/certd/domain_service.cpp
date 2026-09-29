@@ -387,6 +387,42 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_checked(UserContext user,
   co_return co_await add_for_user(u.value(), AddRequest{.number = std::move(doc_key)}, false);
 }
 
+drogon::Task<Result<CheckResult>> DomainServiceImpl::confirm(UserContext user, std::int64_t check_id) {
+  const auto started = std::chrono::steady_clock::now();
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  std::string doc_key;
+  try {
+    // Фильтр по владельцу: чужая проверка неотличима от несуществующей (IDOR).
+    const auto r = co_await db_->execSqlCoro(
+        "SELECT doc_key FROM check_log WHERE id = $1 AND user_id = $2 AND doc_key IS NOT NULL", check_id,
+        u.value().id);
+    if (r.empty()) {
+      co_return Error{ErrorCode::kNotFound, "проверка не найдена"};
+    }
+    doc_key = r[0]["doc_key"].as<std::string>();
+  } catch (const DrogonDbException& e) {
+    co_return db_error(e);
+  }
+  const auto snap = snapshot_of(u.value());
+  if (!snap) {
+    co_return no_snapshot();
+  }
+  // Подсказку пересчитываем, а не храним: в callback уходит только id проверки (АРХ §8), а данные могли
+  // обновиться.
+  const auto verdict = verify::check(*snap, verify::Query{.text = doc_key, .today = today_()});
+  if (verdict.level != verify::Level::kNeedsConfirmation || verdict.suggestions.empty()) {
+    co_return Error{ErrorCode::kNotFound, "подсказка устарела: пришлите номер ещё раз"};
+  }
+  // Вектор — отдельной переменной: `{…}` в аргументе корутины роняет GCC 13 (ICE в
+  // build_special_member_call).
+  std::vector<std::string> numbers;
+  numbers.push_back(verdict.suggestions.front().number);
+  co_return co_await check_numbers(user, std::move(numbers), started, false);
+}
+
 drogon::Task<Result<AddResult>> DomainServiceImpl::attach_supplier(UserContext user, std::int64_t check_id,
                                                                    std::string supplier_inn) {
   if (!verify::inn_valid(supplier_inn)) {

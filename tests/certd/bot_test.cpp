@@ -137,6 +137,22 @@ TEST_F(BotTest, ManyNumbersGiveSummaryAndWatchAll) {
   EXPECT_EQ(drogon::sync_wait(domain.me({.max_user_id = kUser})).value().portfolio_count, 4U);
 }
 
+// Поток A, шаг 6: «Это номер …?» → «Да» → карточка; «Ввести вручную» → просьба прислать номер.
+TEST_F(BotTest, ConfirmSuggestedNumber) {
+  consent();
+  const auto checked =
+      drogon::sync_wait(domain.check_text({.max_user_id = kUser}, "RU D-CR.PA07.B.89369/26"));
+  ASSERT_TRUE(checked.has_value());
+  const auto id = checked.value().verdicts.at(0).check_id;
+  press("y:" + std::to_string(id));
+  EXPECT_EQ(api.answers().back().notification, "Проверяю номер");
+  EXPECT_NE(last().text.find("RU Д-CR.PA08.B.89369/26</b> — действует"), std::string::npos) << last().text;
+  press("n:" + std::to_string(id));
+  EXPECT_NE(last().text.find("Пришлите номер документа текстом"), std::string::npos);
+  press("y:999999");
+  EXPECT_EQ(api.answers().back().notification, "Подсказка устарела — пришлите номер ещё раз");
+}
+
 TEST_F(BotTest, WatchAndUnwatch) {
   consent();
   text("RU D-CR.PA08.B.89369/26");
@@ -325,6 +341,24 @@ TEST(Card, EscapesHtmlInData) {
   const auto m = verdict_card(1, cv, {});
   EXPECT_NE(m.text.find("ООО &lt;b&gt;&quot;Х&amp;Y&quot;&lt;/b&gt;"), std::string::npos);
   EXPECT_EQ(m.buttons.size(), 1U);  // без ссылки https и без open_app
+}
+
+TEST(Card, NeedsConfirmationAsksQuestion) {
+  const CheckedVerdict cv{.check_id = 42,
+                          .verdict = {.number = "RUD-CB.PAO8.B.89369/26",
+                                      .level = verify::Level::kNeedsConfirmation,
+                                      .suggestions = {{.number = "RUD-CR.PA08.B.89369/26", .distance = 1.3}},
+                                      .distance = 1.3,
+                                      .is_demo = true}};
+  const auto m = verdict_card(1, cv, {.open_app = true});
+  EXPECT_NE(m.text.find("Это номер <b>RU Д-CR.PA08.B.89369/26</b>?"), std::string::npos) << m.text;
+  EXPECT_NE(m.text.find("Тестовые данные"), std::string::npos);
+  ASSERT_EQ(m.buttons.size(), 1U);
+  EXPECT_EQ(m.buttons[0][0].payload, "y:42");
+  EXPECT_EQ(m.buttons[0][1].payload, "n:42");
+  EXPECT_TRUE(maxapi::validate(m).has_value());
+  EXPECT_EQ(parse_callback("y:42").value_or(Callback{}).action, 'y');
+  EXPECT_EQ(parse_callback("n:42").value_or(Callback{}).action, 'n');
 }
 
 TEST(Card, ErrorMessages) {

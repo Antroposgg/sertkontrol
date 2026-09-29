@@ -180,6 +180,11 @@ class DomainService {
   /// Поставить на контроль номер из своей проверки `check_log.id`. Чужая или несуществующая — `kNotFound`.
   virtual drogon::Task<Result<AddResult>> add_checked(UserContext user, std::int64_t check_id) = 0;
 
+  /// Подтвердить подсказку «Это номер …?» из своей проверки `check_log.id` (АРХ §4, поток A, шаг 6): номер
+  /// перепроверяется нечётким поиском и, если подсказка по-прежнему уверенная, проверяется точный номер —
+  /// новая строка журнала. Чужая проверка или подсказка устарела — `kNotFound`.
+  virtual drogon::Task<Result<CheckResult>> confirm(UserContext user, std::int64_t check_id) = 0;
+
   /// Поставить на контроль все номера из своей пачки проверок.
   virtual drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) = 0;
 
