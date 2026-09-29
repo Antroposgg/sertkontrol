@@ -38,6 +38,8 @@ class RestApi {
   drogon::Task<drogon::HttpResponsePtr> check_file(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> list_portfolio(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> add_to_portfolio(drogon::HttpRequestPtr req);
+  /// `POST /portfolio/import` (`text/csv`, F9): тело — CSV как есть; ответ — `ImportReport`.
+  drogon::Task<drogon::HttpResponsePtr> import_portfolio(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> remove_from_portfolio(drogon::HttpRequestPtr req, std::string id);
   drogon::Task<drogon::HttpResponsePtr> data_status(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> history(drogon::HttpRequestPtr req);

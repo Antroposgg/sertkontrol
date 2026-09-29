@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "import_report.hpp"
 #include "registry_link.hpp"
 #include "sertkontrol/fakes.hpp"
 
@@ -168,6 +169,24 @@ drogon::Task<Result<CheckResult>> FakeDomainService::confirm(UserContext user, s
     }
   }
   co_return Error{ErrorCode::kNotFound, "подсказка устарела"};
+}
+
+drogon::Task<Result<ImportReport>> FakeDomainService::import_portfolio(UserContext user, std::string csv) {
+  auto parsed = parse_import_csv(csv);
+  if (!parsed) {
+    co_return parsed.error();
+  }
+  const std::scoped_lock lock(mutex_);
+  ImportReport report;
+  report.total = parsed.value().rows.size() + parsed.value().invalid.size();
+  report.invalid = std::move(parsed.value().invalid);
+  for (const auto& row : parsed.value().rows) {
+    if (auto fatal = account_import_row(report, row, add_locked(user.max_user_id, import_request(row)))) {
+      co_return *fatal;
+    }
+  }
+  finish_import_report(report);
+  co_return report;
 }
 
 drogon::Task<Result<BatchAddResult>> FakeDomainService::add_batch(UserContext user, std::int64_t batch_id) {

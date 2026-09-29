@@ -24,5 +24,6 @@ namespace sk::certd {
 [[nodiscard]] Json::Value to_json(const DataStatus& s);
 [[nodiscard]] Json::Value to_json(const DocumentHistory& h);
 [[nodiscard]] Json::Value to_json(const DemoUpdate& u);
+[[nodiscard]] Json::Value to_json(const ImportReport& r);
 
 }  // namespace sk::certd

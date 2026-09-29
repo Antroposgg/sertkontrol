@@ -17,6 +17,8 @@ add_library(sk_certd_core STATIC
   webhook.cpp
   bot_identity.cpp
   registry_link.cpp
+  csv_import.cpp
+  import_report.cpp
   bot/card.cpp
   bot/bot.cpp)
 add_library(sk::certd_core ALIAS sk_certd_core)

@@ -266,6 +266,20 @@ drogon::Task<drogon::HttpResponsePtr> RestApi::add_to_portfolio(drogon::HttpRequ
   co_return r ? json_response(to_json(r.value()), drogon::k201Created) : problem_response(r.error());
 }
 
+drogon::Task<drogon::HttpResponsePtr> RestApi::import_portfolio(drogon::HttpRequestPtr req) {
+  const auto user = co_await authorize(req);
+  if (!user) {
+    co_return problem_response(user.error());
+  }
+  // Тип — по заголовку (text/csv[; charset=…]): Drogon не знает CSV в своём перечне типов.
+  const auto type = req->getHeader("content-type");
+  if (!type.starts_with("text/csv")) {
+    co_return problem_response(Error{ErrorCode::kUnsupportedMediaType, "ожидается Content-Type: text/csv"});
+  }
+  const auto r = co_await domain_.import_portfolio(user.value(), std::string{req->body()});
+  co_return r ? json_response(to_json(r.value())) : problem_response(r.error());
+}
+
 drogon::Task<drogon::HttpResponsePtr> RestApi::remove_from_portfolio(drogon::HttpRequestPtr req,
                                                                      std::string id) {
   const auto user = co_await authorize(req);
@@ -350,6 +364,8 @@ void RestApi::register_routes(drogon::HttpAppFramework& app, const std::shared_p
                       [api](HttpRequestPtr req) { return api->list_portfolio(std::move(req)); }, {Get});
   app.registerHandler("/api/v1/portfolio",
                       [api](HttpRequestPtr req) { return api->add_to_portfolio(std::move(req)); }, {Post});
+  app.registerHandler("/api/v1/portfolio/import",
+                      [api](HttpRequestPtr req) { return api->import_portfolio(std::move(req)); }, {Post});
   app.registerHandler("/api/v1/portfolio/{1}",
                       [api](HttpRequestPtr req, std::string id) {
                         return api->remove_from_portfolio(std::move(req), std::move(id));
@@ -434,9 +450,14 @@ bool is_explicit_405(std::string_view pattern, drogon::HttpMethod method) noexce
 }
 
 std::string allowed_methods(std::string_view path, const std::vector<Route>& routes) {
+  // Путь без параметров важнее шаблона: `/portfolio/import` — отдельный ресурс, а не `/portfolio/{id}`
+  // (так же маршрутизирует Drogon), и методы шаблона к нему не относятся.
+  const auto is_static = [](std::string_view pattern) { return pattern.find('{') == std::string_view::npos; };
+  const bool static_hit = std::ranges::any_of(
+      routes, [&](const Route& r) { return is_static(r.pattern) && matches(r.pattern, path); });
   std::vector<std::string> names;
   for (const auto& r : routes) {
-    if (!matches(r.pattern, path)) {
+    if (!matches(r.pattern, path) || (static_hit && !is_static(r.pattern))) {
       continue;
     }
     std::string name{method_name(r.method)};

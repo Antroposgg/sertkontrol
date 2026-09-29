@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -286,6 +287,31 @@ TEST_F(DomainPgTest, SupplierMismatchOnAdd) {
   EXPECT_TRUE(std::ranges::any_of(r.value().verdict.findings,
                                   [](const verify::Finding& f) { return f.rule == "supplier.mismatch"; }));
   EXPECT_EQ(r.value().item.supplier_inn, "7700000023");
+}
+
+// F9, критерий приёмки АРХ §2: 500 строк импорта ≤ 10 с, отчёт по ненайденным; повтор — «уже на контроле».
+TEST_F(DomainPgTest, Import500RowsUnder10s) {
+  std::string csv = "SKU;Номер;ИНН поставщика\n";
+  for (int i = 0; i < 500; ++i) {
+    const auto* number = i % 50 == 0 ? "RU D-XX.0000.A.99999/26" : "RU D-CR.PA08.B.89369/26";
+    csv += "SKU-" + std::to_string(i) + ";" + number + ";" + (i % 100 == 1 ? "7700000023" : "") + "\n";
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto r = run(svc->import_portfolio(alice, csv));
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  EXPECT_LT(elapsed, std::chrono::seconds{10});
+  EXPECT_EQ(r.value().total, 500U);
+  EXPECT_EQ(r.value().added, 500U);
+  EXPECT_EQ(r.value().not_found.size(), 10U);
+  EXPECT_EQ(r.value().supplier_mismatch.size(), 5U);
+  EXPECT_TRUE(r.value().invalid.empty());
+  EXPECT_EQ(run(svc->me(alice)).value().portfolio_count, 500U);
+  const auto again = run(svc->import_portfolio(alice, csv));
+  ASSERT_TRUE(again.has_value());
+  EXPECT_EQ(again.value().already, 500U);
+  // Чужой портфель импорт не трогает.
+  EXPECT_EQ(run(svc->me(bob)).value().portfolio_count, 0U);
 }
 
 TEST_F(DomainPgTest, AddFromChecksAndBatch) {

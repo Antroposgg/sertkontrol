@@ -12,6 +12,7 @@
 #include <json/value.h>
 #include <json/writer.h>
 
+#include "import_report.hpp"
 #include "registry_link.hpp"
 #include "sertkontrol/snapshot/lookup.hpp"
 #include "sertkontrol/verify/inn.hpp"
@@ -469,6 +470,34 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::attach_supplier(UserContext u
   }
   co_return co_await add_for_user(
       u.value(), AddRequest{.number = std::move(doc_key), .supplier_inn = std::move(supplier_inn)}, true);
+}
+
+drogon::Task<Result<ImportReport>> DomainServiceImpl::import_portfolio(UserContext user, std::string csv) {
+  // Один запрос к лимиту на весь файл: построчный учёт упёр бы импорт 500 строк в 30 проверок в минуту (АРХ
+  // §10).
+  if (!limiter_.try_acquire(user.max_user_id)) {
+    co_return Error{ErrorCode::kRateLimited, "не больше 30 проверок в минуту, попробуйте чуть позже"};
+  }
+  auto parsed = parse_import_csv(csv);
+  if (!parsed) {
+    co_return parsed.error();
+  }
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  ImportReport report;
+  report.total = parsed.value().rows.size() + parsed.value().invalid.size();
+  report.invalid = std::move(parsed.value().invalid);
+  for (const auto& row : parsed.value().rows) {
+    auto request = import_request(row);
+    const auto added = co_await add_for_user(u.value(), std::move(request), false);
+    if (auto fatal = account_import_row(report, row, added)) {
+      co_return *fatal;
+    }
+  }
+  finish_import_report(report);
+  co_return report;
 }
 
 drogon::Task<Result<BatchAddResult>> DomainServiceImpl::add_batch(UserContext user, std::int64_t batch_id) {
