@@ -107,7 +107,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | ✔ завершён 2026-09-27, ворота зелёные |
 | 2 | Обновление и уведомления (F5, F6) | ✔ завершён 2026-09-28; Docker-пункт закрыт на этапе 3 (§7.4) |
 | 3 | Нечёткий поиск и надёжность | ✔ завершён 2026-09-29; ворота зелёные (§7.4), CI зелёный |
-| 4 | Should: F10, F8, F9, затем F7 | в работе (§8) |
+| 4 | Should: F10, F8, F9, затем F7 | F10, F8, F9 ✔ 2026-09-30, ворота зелёные (§8.4); F7 — по команде |
 
 ---
 
@@ -411,4 +411,33 @@ F7 (OCR фото) — отдельным шагом после них.
 | 4.3 | `web` | `bridge.canScanQr`, `scanQr`; кнопка на «Добавить» | `bridge.test.ts`, `Add.test.tsx` |
 | 4.4 | `libs/verify`, `docs/rules.md`, `certd` | F8: правила сверки ИНН, предупреждение в боте и web | `RulesTest.Table`, `DomainPgTest.*`, `Card.*` |
 | 4.5 | `apps/certd`, `openapi.yaml`, `web` | F9: разбор CSV, `import_portfolio`, `POST /portfolio/import`, экран «Импорт» | `CsvImport.*`, `DomainPgTest.Import500RowsUnder10s`, `RestApiTest.*`, `Import.test.tsx`, fuzz `fuzz_import_csv`, schemathesis |
+
+### 8.4. Результат ворот (F10, F8, F9; чистый клон, `scripts/gate.sh`)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 и clang 18 с `-Werror`, clang-tidy, clang-format, ESLint, tsc strict, линтер OpenAPI | 0 ошибок, 0 предупреждений |
+| 2 | Тесты ×2, ASan/UBSan, TSan | C++ 245/245 (дважды, с PostgreSQL, 0 пропущенных); web 75/75 (дважды); санитайзеры без находок |
+| 3 | Покрытие | C++ 89,7% строк (3626/4042); web 99,4% строк |
+| 4 | Шаги CI локально | все зелёные; fuzz — 9 целей × 60 с (новые `fuzz_registry_url`, `fuzz_import_csv`) без находок |
+| 5 | `docker build --no-cache` / compose | 75 с (без Tesseract, ADR-0017); compose-smoke и контрактные тесты зелёные |
+| 6 | Критерии F | таблица 8.5 |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонений от АРХ нет, решения — §8.2 |
+| 8 | Документация | README модулей и корневой, CLAUDE.md, `docs/rules.md`, `openapi.yaml` 1.5.0, журнал контрактов (C2, C4, C6, C7) |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ нет |
+
+Бенчмарки: точный поиск p99 3,8 мкс, нечёткий p99 244 мкс, diff 68 мс на 1 млн записей.
+
+Найдено воротами: schemathesis — лимит 30 проверок в минуту общий для проверок, файлов и импорта, поэтому прогон
+одним пользователем получает 429 (задокументированный ответ добавлен в ожидаемые); тело `text/csv` описано без
+JSON-типа — «число 0» и «строка "0"» для текста неотличимы. На живом стеке `Allow` для `/portfolio/import` включал
+`DELETE` от шаблона `/portfolio/{id}` — статичный путь теперь важнее шаблона.
+
+### 8.5. F-требования этапа 4 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F10 | Сканирование QR камерой в мини-приложении работает на телефоне; на вебе кнопка скрыта, работает загрузка файла | `web/src/max/bridge.ts` (`canScanQr`, `scanQr`), `web/src/screens/Add.tsx`; `verify::parse_registry_url`, C2 `Snapshot::by_registry_id`, `apps/certd/registry_link.cpp` | web `bridge.test.ts` «сканер QR», `Add.test.tsx` «на телефоне…», «в вебе кнопки сканера нет»; `SnapshotTest.ByRegistryId`, `VerifyText.ParseRegistryUrl`, `DomainPgTest.RegistryLinkFromQr`, `BotTest.RegistryLinkGivesCard`, fuzz `fuzz_registry_url` |
+| F8 | Несовпадение «заявитель = поставщик» → предупреждение с объяснением | `verify.cpp` (`supplier_rules`, `advice.check_supplier`), `Query::supplier_inn`, `bot/card.cpp` (`supplier_attached`), `web/src/screens/Add.tsx` | `RulesTest.SupplierRules`, `DomainPgTest.SupplierMismatchOnAdd`, `BotTest.SupplierMismatchWarns`, web `Add.test.tsx` «F8…» |
+| F9 | Импорт CSV «SKU, номер, ИНН»: 500 строк ≤ 10 с, отчёт по ненайденным | `apps/certd/csv_import.cpp`, `import_report.cpp`, `DomainServiceImpl::import_portfolio`, `POST /portfolio/import`, `web/src/screens/Import.tsx` | `DomainPgTest.Import500RowsUnder10s` (≈ 2 с), `CsvImport.*`, `RestApiTest.ImportCsv`, web `Import.test.tsx`, fuzz `fuzz_import_csv`, schemathesis |
 
