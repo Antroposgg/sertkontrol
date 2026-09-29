@@ -1,7 +1,13 @@
 import { vi } from 'vitest';
 
 import type { SertkontrolApi } from '../api/sertkontrol';
-import type { CheckedVerdict, DataStatus, DocumentHistory, PortfolioPage } from '../api/types';
+import type {
+  CheckedVerdict,
+  DataStatus,
+  DocumentHistory,
+  ImportReport,
+  PortfolioPage,
+} from '../api/types';
 
 export const verdict: CheckedVerdict = {
   check_id: 1,
@@ -76,6 +82,15 @@ export const history: DocumentHistory = {
 };
 
 /** API с успешными ответами по умолчанию; отдельные методы переопределяются в тесте. */
+export const importReport: ImportReport = {
+  total: 4,
+  added: 2,
+  already: 1,
+  not_found: [{ line: 3, number: 'RUD-XX.0000.A.99999/26', display_number: 'RU Д-XX.0000.A.99999/26' }],
+  supplier_mismatch: [{ line: 2, number: 'RUD-CR.PA08.B.89369/26', display_number: 'RU Д-CR.PA08.B.89369/26' }],
+  invalid: [{ line: 5, reason: 'номер документа не распознан' }],
+};
+
 export function fakeApi(overrides: Partial<SertkontrolApi> = {}): SertkontrolApi {
   return {
     me: vi.fn(() =>
@@ -87,6 +102,7 @@ export function fakeApi(overrides: Partial<SertkontrolApi> = {}): SertkontrolApi
     listPortfolio: vi.fn(() => Promise.resolve(page)),
     addToPortfolio: vi.fn(() => Promise.resolve({ item: page.items[0] ?? ({} as never), verdict })),
     removeFromPortfolio: vi.fn(() => Promise.resolve()),
+    importPortfolio: vi.fn(() => Promise.resolve(importReport)),
     dataStatus: vi.fn(() => Promise.resolve(dataStatus)),
     history: vi.fn(() => Promise.resolve(history)),
     simulateUpdate: vi.fn(() => Promise.resolve({ notified: 1 })),

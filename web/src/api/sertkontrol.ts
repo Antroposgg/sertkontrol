@@ -9,6 +9,7 @@ import type {
   DataStatus,
   DemoUpdate,
   DocumentHistory,
+  ImportReport,
   Me,
   PortfolioFilter,
   PortfolioPage,
@@ -23,6 +24,8 @@ export interface SertkontrolApi {
   checkFile: (file: File) => Promise<CheckedVerdict[]>;
   listPortfolio: (filter: PortfolioFilter) => Promise<PortfolioPage>;
   addToPortfolio: (request: AddRequest) => Promise<AddResult>;
+  /** Импорт CSV «SKU; номер; ИНН поставщика» на контроль (F9): текст файла как есть, `text/csv`. */
+  importPortfolio: (csv: string) => Promise<ImportReport>;
   removeFromPortfolio: (id: number) => Promise<void>;
   dataStatus: () => Promise<DataStatus>;
   /** История документа по номеру в любом написании (`GET /history?number=`, ADR-0014). */
@@ -53,6 +56,7 @@ export function createSertkontrolApi(client: ApiClient): SertkontrolApi {
       return client.get<PortfolioPage>(query === '' ? '/portfolio' : `/portfolio?${query}`);
     },
     addToPortfolio: (request) => client.post<AddResult>('/portfolio', request),
+    importPortfolio: (csv) => client.postText<ImportReport>('/portfolio/import', csv, 'text/csv; charset=utf-8'),
     removeFromPortfolio: (id) => client.del(`/portfolio/${String(id)}`),
     dataStatus: () => client.get<DataStatus>('/data-status'),
     history: (number) => client.get<DocumentHistory>(`/history?${new URLSearchParams({ number }).toString()}`),

@@ -7,6 +7,7 @@ import { getStartTarget, getWebApp } from './max/bridge';
 import { Add } from './screens/Add';
 import { Data } from './screens/Data';
 import { Document } from './screens/Document';
+import { Import } from './screens/Import';
 import { Portfolio } from './screens/Portfolio';
 import { SCREENS, type ScreenId } from './screens';
 
@@ -23,6 +24,7 @@ const CONTENT: Record<ScreenId, (props: ScreenProps) => React.JSX.Element> = {
   // key — новый номер пересоздаёт экран вместе с полем ввода.
   document: ({ documentNumber }) => <Document key={documentNumber} number={documentNumber} />,
   add: () => <Add />,
+  import: () => <Import />,
   data: () => <Data />,
 };
 

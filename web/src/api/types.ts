@@ -138,6 +138,23 @@ export interface PortfolioFilter {
   cursor?: string;
 }
 
+/** Строка отчёта импорта с номером документа. */
+export interface ImportedLine {
+  line: number;
+  number: string;
+  display_number: string;
+}
+
+/** Отчёт импорта CSV (`POST /portfolio/import`, F9). */
+export interface ImportReport {
+  total: number;
+  added: number;
+  already: number;
+  not_found: ImportedLine[];
+  supplier_mismatch: ImportedLine[];
+  invalid: { line: number; reason: string }[];
+}
+
 /** Запрос «поставить на контроль». */
 export interface AddRequest {
   number: string;
