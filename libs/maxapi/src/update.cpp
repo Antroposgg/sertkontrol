@@ -10,8 +10,8 @@ namespace {
 
 /// Поле объекта или null: `operator[]` jsoncpp бросает исключение на не-объекте (находка fuzz_update_json).
 const Json::Value& field(const Json::Value& v, const char* key) {
-  static const Json::Value kNull;
-  return v.isObject() ? v[key] : kNull;
+  static const Json::Value null_value;
+  return v.isObject() ? v[key] : null_value;
 }
 
 Error invalid_update(const std::string& what) {
