@@ -225,11 +225,13 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
     }
     // Текст — до co_await: GCC 13 неверно компилирует `?:` в аргументе co_await (CLAUDE.md, «Стиль кода»).
     std::string note = "Не получилось добавить";
+    std::string reply = "Не получилось поставить документ на контроль. Попробуйте ещё раз.";
     if (r.error().code == ErrorCode::kConflict) {
       note = "Уже на контроле";
+      reply = "Этот документ уже на контроле — сообщу, если его статус в реестре изменится.";
     }
     (void)co_await api_.answer_callback(e.callback_id, std::move(note));
-    co_return std::string{};
+    co_return co_await send(button_result(user, reply, config_.card), kPriorityReply);
   }
   if (cb->action == 'y') {
     auto r = co_await domain_.confirm(ctx(user), cb->arg);
@@ -254,8 +256,9 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
       note = "Добавлено: " + std::to_string(r.value().added) +
              ", уже было: " + std::to_string(r.value().already);
     }
+    auto reply = button_result(user, note, config_.card);
     (void)co_await api_.answer_callback(e.callback_id, std::move(note));
-    co_return std::string{};
+    co_return co_await send(std::move(reply), kPriorityReply);
   }
   if (cb->action == 's') {
     const auto r = co_await dialogs_.set(user, Dialog{.state = std::string{kAwaitingInn}, .arg = cb->arg});
@@ -269,11 +272,13 @@ drogon::Task<std::string> Bot::on_callback(maxapi::MessageCallback e) {
   // 'd' — снять с контроля
   const auto r = co_await domain_.remove_from_portfolio(ctx(user), cb->arg);
   std::string note = "Уже снято";
+  std::string reply = "Этот документ уже снят с контроля.";
   if (r) {
     note = "Снято с контроля";
+    reply = "Документ снят с контроля — уведомлений о нём больше не будет.";
   }
   (void)co_await api_.answer_callback(e.callback_id, std::move(note));
-  co_return std::string{};
+  co_return co_await send(button_result(user, reply, config_.card), kPriorityReply);
 }
 
 }  // namespace sk::certd::bot

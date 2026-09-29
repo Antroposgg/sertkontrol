@@ -43,6 +43,11 @@ struct CardOptions {
 /// Подтверждение постановки на контроль.
 [[nodiscard]] maxapi::OutgoingMessage watched(std::int64_t user, const AddResult& added,
                                               const CardOptions& options);
+/// Итог нажатия кнопки («Уже на контроле», «Снято с контроля», «Добавлено: N») сообщением в чат с кнопкой
+/// портфеля: `answer_callback` в MAX — «one-time notification», всплывающая подсказка, которую легко
+/// пропустить.
+[[nodiscard]] maxapi::OutgoingMessage button_result(std::int64_t user, const std::string& text,
+                                                    const CardOptions& options);
 /// Сообщение об ошибке домена человеческим языком.
 [[nodiscard]] maxapi::OutgoingMessage error_message(std::int64_t user, const Error& error);
 /// «Проверяю…» — пока идёт распознавание файла.

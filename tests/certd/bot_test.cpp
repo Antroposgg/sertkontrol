@@ -161,6 +161,7 @@ TEST_F(BotTest, ManyNumbersGiveSummaryAndWatchAll) {
   ASSERT_TRUE(has_payload(m, "W:"));
   press(m.buttons[0][0].payload);
   EXPECT_EQ(api.answers().back().notification, "Добавлено: 4, уже было: 0");
+  EXPECT_NE(last().text.find("Добавлено: 4, уже было: 0"), std::string::npos) << last().text;
   EXPECT_EQ(drogon::sync_wait(domain.me({.max_user_id = kUser})).value().portfolio_count, 4U);
 }
 
@@ -189,16 +190,26 @@ TEST_F(BotTest, WatchAndUnwatch) {
   const auto w = last();
   EXPECT_NE(w.text.find("на контроле"), std::string::npos);
   ASSERT_TRUE(has_payload(w, "d:"));
+  // Итог каждого нажатия — и всплывающей подсказкой, и сообщением в чате (подсказку легко пропустить).
   press(card.buttons[0][0].payload);
   EXPECT_EQ(api.answers().back().notification, "Уже на контроле");
+  EXPECT_NE(last().text.find("уже на контроле"), std::string::npos) << last().text;
+  EXPECT_EQ(last().buttons.at(0).at(0).kind, Button::Kind::kOpenApp);
   press(w.buttons[0][0].payload);
   EXPECT_EQ(api.answers().back().notification, "Снято с контроля");
+  EXPECT_NE(last().text.find("снят с контроля"), std::string::npos) << last().text;
   press(w.buttons[0][0].payload);
   EXPECT_EQ(api.answers().back().notification, "Уже снято");
+  EXPECT_NE(last().text.find("уже снят"), std::string::npos) << last().text;
   press("w:999999");
   EXPECT_EQ(api.answers().back().notification, "Не получилось добавить");
+  EXPECT_NE(last().text.find("Не получилось поставить"), std::string::npos) << last().text;
   press("W:999999");
   EXPECT_EQ(api.answers().back().notification, "Не получилось добавить");
+  EXPECT_NE(last().text.find("Не получилось добавить"), std::string::npos) << last().text;
+  for (const auto& e : outbox.entries()) {
+    EXPECT_TRUE(maxapi::validate(e.msg).has_value()) << e.msg.text;
+  }
   press("x:1");
   EXPECT_EQ(api.answers().back().notification, "Кнопка устарела");
 }

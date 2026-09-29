@@ -254,6 +254,14 @@ OutgoingMessage watched(std::int64_t user, const AddResult& added, const CardOpt
   return m;
 }
 
+OutgoingMessage button_result(std::int64_t user, const std::string& text, const CardOptions& options) {
+  OutgoingMessage m{.max_user_id = user, .text = html_escape(text), .kind = MessageKind::kReply};
+  if (options.open_app) {
+    m.buttons.push_back({open_app("Открыть портфель", "portfolio")});
+  }
+  return m;
+}
+
 OutgoingMessage error_message(std::int64_t user, const Error& error) {
   std::string text;
   switch (error.code) {
