@@ -42,9 +42,19 @@ class SnapshotSwap : public ::testing::Test {
         records.push_back(
             {.number = "RUD-RU.PA01.B." + std::to_string(10000 + i) + "/25", .status = Status::kActive});
       }
-      ASSERT_TRUE(snapshot::write_snapshot(file(v), records,
-                                           {.version = v, .source = "tsan", .source_date = kToday}));
+      if (!snapshot::write_snapshot(file(v), records,
+                                    {.version = v, .source = "tsan", .source_date = kToday})) {
+        return;  // ready() == false — тест упадёт в SetUp, а не будет пропущен
+      }
     }
+    ready() = true;
+  }
+  // Без ASSERT в SetUpTestSuite: их провал gtest печатает как SKIPPED, и ctest засчитывает тест как
+  // пройденный.
+  void SetUp() override { ASSERT_TRUE(ready()) << "снапшоты фикстуры не записаны"; }
+  static bool& ready() {
+    static bool v = false;
+    return v;
   }
   static void TearDownTestSuite() { std::filesystem::remove_all(dir()); }
   static std::filesystem::path& dir() {

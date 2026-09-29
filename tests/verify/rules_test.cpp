@@ -66,11 +66,18 @@ class RulesTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
     snapshot_path = std::filesystem::temp_directory_path() / "sk-verify-rules-test.bin";
-    ASSERT_TRUE(snapshot::write_snapshot(
-        snapshot_path, records(), {.version = 7, .source = "test", .source_date = kToday, .is_demo = true}));
-    auto r = snapshot::open_snapshot(snapshot_path);
-    ASSERT_TRUE(r.has_value());
-    shared_snapshot = std::move(r).value();
+    if (!snapshot::write_snapshot(snapshot_path, records(),
+                                  {.version = 7, .source = "test", .source_date = kToday, .is_demo = true})) {
+      return;  // shared_snapshot == nullptr — тесты упадут в SetUp, а не будут пропущены
+    }
+    if (auto r = snapshot::open_snapshot(snapshot_path)) {
+      shared_snapshot = std::move(r).value();
+    }
+  }
+  // Без ASSERT в SetUpTestSuite: их провал gtest печатает как SKIPPED, и ctest засчитывает тест как
+  // пройденный.
+  void SetUp() override {
+    ASSERT_NE(shared_snapshot, nullptr) << "снапшот фикстуры не записан или не открыт";
   }
   static void TearDownTestSuite() {
     shared_snapshot.reset();
