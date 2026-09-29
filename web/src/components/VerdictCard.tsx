@@ -53,12 +53,13 @@ export function VerdictCard({ verdict, onWatch, onConfirm, watching = false }: V
   const title = verdict.display_number ?? verdict.query;
   return (
     <article className="verdict" aria-label={`Вердикт ${title}`}>
+      {/* Статус — в том же заголовке, что и в боте: Title и Body max-ui строчные и иначе слипаются («…/26действует»). */}
       <Typography.Title>
-        {LEVEL_ICONS[verdict.level]} {card === null ? title : `${card.kind === 'certificate' ? 'Сертификат' : 'Декларация'} ${title}`}
+        {LEVEL_ICONS[verdict.level]}{' '}
+        {card === null
+          ? `${title} — ${verdict.number === null ? 'номер не распознан' : 'нет в данных реестра'}`
+          : `${card.kind === 'certificate' ? 'Сертификат' : 'Декларация'} ${title} — ${card.status_name}`}
       </Typography.Title>
-      <Typography.Body>
-        {card === null ? (verdict.number === null ? 'Номер не распознан' : 'Нет в данных реестра') : card.status_name}
-      </Typography.Body>
       {verdict.is_demo && <p className="demo-note">Тестовые данные: демо-снапшот реестра</p>}
       {SECTIONS.map(({ basis, title: sectionTitle }) => {
         const rows = verdict.findings.filter((f) => f.basis === basis).map((f) => f.text);

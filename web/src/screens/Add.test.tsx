@@ -16,7 +16,7 @@ describe('Добавить', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
     expect(api.check).toHaveBeenCalledWith('RU Д-CR.PA08.B.89369/26');
     const card = await screen.findByRole('article');
-    expect(card).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26');
+    expect(card).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26 — действует');
     for (const section of ['Факт', 'Расчёт', 'Рекомендация']) {
       expect(screen.getByRole('region', { name: section })).toBeInTheDocument();
     }
@@ -41,7 +41,7 @@ describe('Добавить', () => {
     await userEvent.type(screen.getByLabelText('Номер документа'), 'RU Д-CR.PA07.B.89369/26');
     await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
     const card = await screen.findByRole('article');
-    expect(card).toHaveTextContent('Нет в данных реестра');
+    expect(card).toHaveTextContent('— нет в данных реестра');
     expect(card).toHaveTextContent('Похожие номера: RU Д-CR.PA09.B.89369/26');
     expect(screen.queryByText('Открыть в реестре')).not.toBeInTheDocument();
   });
