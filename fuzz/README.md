@@ -11,6 +11,7 @@
 | `fuzz_outbox_json` | строка outbox (C9) → лимиты MAX → `NewMessageBody` | — |
 | `fuzz_demo_tsv` | парсер источника (C3): `DemoTsvSource` + нормализация | — |
 | `fuzz_weighted_distance` | взвешенный Левенштейн (АРХ §7.2) | симметрия, 0 на равных строках, ≤ длины длинной строки |
+| `fuzz_registry_url` | ссылка на запись реестра из QR (F10, `parse_registry_url`) | ID ≠ 0; `registry_url` найденной ссылки разбирается в тот же ID и вид |
 
 Стартовые корпуса — `corpus/<цель>/` (в том числе `regression-*` — входы найденных ошибок). CSV-импорт (F9) — этап 4.
 

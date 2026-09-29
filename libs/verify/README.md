@@ -12,7 +12,7 @@
 |---|---|
 | `src/verify.cpp` | `check`: точный поиск (`equal_range` + сравнение строки), `apply_rules`, `nearest` |
 | `include/sertkontrol/verify/fuzzy.hpp`, `src/fuzzy.cpp` | `weighted_distance` (по кодовым точкам, пары OCR O↔0, B↔8, S↔5, I↔1, Z↔2 — 0,3), `fuzzy_match` → `{ranked, confident}`; константы `kOcrSubstitutionCost`, `kAcceptDistance = 2`, `kMinGap = 0,5` |
-| `include/sertkontrol/verify/text.hpp`, `src/text.cpp` | `format_date`, `status_name`, `kind_name`, `registry_url`, `display_number`, константы `kExpiringSoonDays = 30`, `kMaxSuggestions = 3` |
+| `include/sertkontrol/verify/text.hpp`, `src/text.cpp` | `format_date`, `status_name`, `kind_name`, `registry_url` (в демо — страница поиска), `parse_registry_url` (ссылка из QR выписки, F10), `display_number`, константы `kExpiringSoonDays = 30`, `kMaxSuggestions = 3` |
 | [`docs/rules.md`](../../docs/rules.md) | Каталог правил — часть контракта C4 |
 
 ## Публичный интерфейс

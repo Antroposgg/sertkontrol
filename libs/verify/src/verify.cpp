@@ -154,7 +154,9 @@ Verdict check(const snapshot::Snapshot& snap, const Query& query) {
                   .manufacturer_name = std::string{rec.manufacturer_name},
                   .product = std::string{rec.product},
                   .tnved = std::string{rec.tnved},
-                  .registry_url = registry_url(rec.kind, rec.registry_id)};
+                  // Демо-запись не ведёт на реальную запись реестра, даже если у неё есть ID для поиска по
+                  // QR тестовой выписки: её поля вымышлены (data/demo/README.md).
+                  .registry_url = registry_url(rec.kind, snap.meta().is_demo ? 0 : rec.registry_id)};
     apply_rules(rec, query.today, v);
     return v;
   }

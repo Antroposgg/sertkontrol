@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/checked.hpp"
+
 namespace sk::verify {
 namespace {
 
@@ -37,6 +39,28 @@ TEST(VerifyText, RegistryUrl) {
   EXPECT_EQ(registry_url(canon::DocKind::kCertificate, 2),
             "https://pub.fsa.gov.ru/rss/certificate/view/2/common");
   EXPECT_EQ(registry_url(canon::DocKind::kDeclaration, 0), "https://pub.fsa.gov.ru/rds/declaration");
+}
+
+// QR выписки ФСА — ссылка на запись реестра, а не номер (docs/plan.md §8.1).
+TEST(VerifyText, ParseRegistryUrl) {
+  const auto d = parse_registry_url("https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(sk::test::checked(d).kind, canon::DocKind::kDeclaration);
+  EXPECT_EQ(sk::test::checked(d).registry_id, 21950326U);
+  const auto c = parse_registry_url("Выписка: http://pub.fsa.gov.ru/rss/certificate/view/42 — проверьте");
+  ASSERT_TRUE(c.has_value());
+  EXPECT_EQ(sk::test::checked(c).kind, canon::DocKind::kCertificate);
+  EXPECT_EQ(sk::test::checked(c).registry_id, 42U);
+  EXPECT_EQ(sk::test::checked(parse_registry_url("pub.fsa.gov.ru/rds/declaration/view/18446744073709551615"))
+                .registry_id,
+            18446744073709551615ULL);
+  for (const auto* bad :
+       {"", "https://pub.fsa.gov.ru/rds/declaration", "pub.fsa.gov.ru/rds/declaration/view/",
+        "pub.fsa.gov.ru/rds/declaration/view/0/common", "pub.fsa.gov.ru/rds/declaration/view/x1",
+        "pub.fsa.gov.ru/rds/declaration/view/18446744073709551616",
+        "https://example.com/rds/declaration/view/1", "RU D-CR.PA08.B.89369/26"}) {
+    EXPECT_FALSE(parse_registry_url(bad).has_value()) << bad;
+  }
 }
 
 }  // namespace

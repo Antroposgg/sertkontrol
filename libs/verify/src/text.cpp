@@ -1,6 +1,8 @@
 #include "sertkontrol/verify/text.hpp"
 
 #include <array>
+#include <cstdint>
+#include <optional>
 
 namespace sk::verify {
 
@@ -42,6 +44,36 @@ std::string registry_url(canon::DocKind kind, std::uint64_t registry_id) {
     return base;
   }
   return base + "/view/" + std::to_string(registry_id) + "/common";
+}
+
+std::optional<RegistryRef> parse_registry_url(std::string_view text) {
+  struct Prefix {
+    std::string_view path;
+    canon::DocKind kind;
+  };
+  static constexpr std::array kPrefixes{
+      Prefix{.path = "pub.fsa.gov.ru/rds/declaration/view/", .kind = canon::DocKind::kDeclaration},
+      Prefix{.path = "pub.fsa.gov.ru/rss/certificate/view/", .kind = canon::DocKind::kCertificate}};
+  for (const auto& p : kPrefixes) {
+    const auto at = text.find(p.path);
+    if (at == std::string_view::npos) {
+      continue;
+    }
+    std::uint64_t id = 0;
+    std::size_t digits = 0;
+    for (auto i = at + p.path.size(); i < text.size() && text[i] >= '0' && text[i] <= '9'; ++i, ++digits) {
+      const auto d = static_cast<std::uint64_t>(text[i] - '0');
+      if (id > (UINT64_MAX - d) / 10) {
+        return std::nullopt;  // больше 2^64−1 — не ID реестра
+      }
+      id = (id * 10) + d;
+    }
+    if (digits == 0 || id == 0) {
+      return std::nullopt;
+    }
+    return RegistryRef{.kind = p.kind, .registry_id = id};
+  }
+  return std::nullopt;
 }
 
 std::string display_number(std::string_view canonical) {

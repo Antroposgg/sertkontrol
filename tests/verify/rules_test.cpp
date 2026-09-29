@@ -181,9 +181,24 @@ TEST_F(RulesTest, CardFieldsAndRegistryLink) {
   EXPECT_EQ(c.manufacturer_name, "ТЕСТ-ЗАВОД");
   EXPECT_EQ(c.product, "Чайники");
   EXPECT_EQ(c.tnved, "8516790000");
-  EXPECT_EQ(c.registry_url, "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  // Снапшот фикстуры — демо: ссылка на страницу поиска, хотя у записи есть ID (поля демо вымышлены).
+  EXPECT_EQ(c.registry_url, "https://pub.fsa.gov.ru/rds/declaration");
   EXPECT_EQ(sk::test::checked(run("RU C-RU.AЯ46.B.10005/24").card).registry_url,
             "https://pub.fsa.gov.ru/rss/certificate");
+}
+
+// Боевой снапшот: ссылка ведёт на запись реестра по её ID.
+TEST(RegistryLink, ProdSnapshotLinksToRecord) {
+  const auto path = std::filesystem::temp_directory_path() / "sk-verify-prod-link.bin";
+  ASSERT_TRUE(snapshot::write_snapshot(
+      path, {{.number = "RUD-CR.PA08.B.89369/26", .status = Status::kActive, .registry_id = 21950326}},
+      {.version = 1, .source = "fsa", .source_date = kToday}));
+  const auto snap = snapshot::open_snapshot(path);
+  ASSERT_TRUE(snap.has_value());
+  const auto v = check(*snap.value(), {.text = "RU D-CR.PA08.B.89369/26", .today = kToday});
+  EXPECT_EQ(sk::test::checked(v.card).registry_url,
+            "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  std::filesystem::remove(path);
 }
 
 TEST_F(RulesTest, TextsMentionDates) {
