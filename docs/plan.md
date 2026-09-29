@@ -329,3 +329,41 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | Импорт CSV (F9), `openCodeReader` (F10), SKU в мини-приложении | нет | этап 4 |
 | Источник ФСА (`ingest --once`) | демо-данные N / N+1 | после подтверждения данных |
 | `TRACE` → 405 без `Allow` | ограничение Drogon 1.8.7, ADR-0016 | — |
+
+### 7.4. Результат ворот этапа 3 (чистый клон, `scripts/gate.sh`)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 (unity) и clang 18 с `-Werror`, clang-tidy (72 файла), clang-format, ESLint, tsc strict, линтер OpenAPI (@redocly/cli) | 0 ошибок, 0 предупреждений |
+| 2 | Тесты ×2, ASan/UBSan, TSan | C++ 225/225 (каждый дважды, с PostgreSQL 16, 0 пропущенных); web 65/65 (дважды); ASan/UBSan без находок; TSan (`concurrency_test`, 2 теста) без находок |
+| 3 | Покрытие | C++ 89,3% строк (3348/3749); web 99,31% строк |
+| 4 | Шаги CI локально | все зелёные; новые: TSan, fuzz smoke (7 целей × 60 с), бенчмарки, линтер OpenAPI, контрактные тесты schemathesis |
+| 5 | `docker build --no-cache` / compose | **294 с — выше порога ворот 240 с** (лимит КЕЙСА 300 с): 259 с — загрузка и установка пакетов apt при 0,3–0,8 МБ/с на канале стенда, компиляция 25 с; на этапах 0–1 тот же образ на этом стенде собирался за 86–93 с. Нужен замер в задаче Docker CI (раннер GitHub, зеркало Azure) или на канале жюри; `compose-smoke` → `/healthz` 200, `/` 200, согласие 204, `/api/v1/check` → `ok` |
+| 6 | Критерии F этапа | таблица 7.5 |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонения — ADR-0015 (libcurl), [ADR-0016](adr/0016-trace-405-without-allow.md) (`TRACE`), [ADR-0017](adr/0017-tesseract-with-ocr-stage.md) (Tesseract — на этапе 4) |
+| 8 | Документация | корневой README по КЕЙС §4, README модулей, CLAUDE.md, этот план, `openapi.yaml` 1.3.0, `docs/rules.md`, журнал контрактов |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ в `git log` нет |
+
+Бенчмарки (1 млн записей, `scripts/ci/bench.sh`): точный поиск p50 1,9 мкс / p99 4,5 мкс (цель ≤ 1 мс), нечёткий
+p50 159 мкс / p99 263 мкс (цель ≤ 5 мс), «нет в данных» p99 10 мкс, канонизация p99 0,7 мкс, diff 93 мс.
+
+Найдено и исправлено воротами этапа:
+- fuzz: jsoncpp бросает `Json::RuntimeError` на вложенности глубже `stackLimit` — разбор в `maxapi` и тело
+  `POST /portfolio` теперь дают ошибку данных (раньше REST отвечал 500); ридер снапшота принимал пустую секцию со
+  смещением за файлом (UB при `base + offset`). Входы сохранены в корпусах как `regression-*`, добавлены юнит-тесты.
+- schemathesis: неизвестные и пустые параметры запроса принимались молча; `PUT`/`GET` на `/portfolio/{id}` давали 404
+  вместо 405 (Drogon 1.8.7 на маршрутах с параметром).
+- ворота: в dev-контейнере не было Docker, и `with-pg.sh` пропускал тесты с БД, а провал `ASSERT` в `SetUpTestSuite`
+  gtest печатает как SKIPPED — ctest засчитывал такие тесты пройденными. Теперь база поднимается на хосте
+  (`SK_REQUIRE_PG=1` делает пропуск ошибкой, и в CI тоже), фикстуры проверяют готовность в `SetUp`, в dev-образ
+  добавлен CLI `openssl` (TlsTest). gcov давал отрицательные счётчики на многопоточных тестах — `-fprofile-update=atomic`.
+
+### 7.5. F-требования этапа 3 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F1 (полностью) | Номер с 1–2 ошибками распознавания находится; любое ненулевое расстояние — вопрос «Это номер …?», а не подмена | `libs/verify/src/fuzzy.cpp` (`weighted_distance`, `fuzzy_match`), `verify.cpp` (`needs_confirmation`), `DomainServiceImpl::confirm`, `bot/card.cpp` (`confirm_question`), `bot.cpp` (`y:`/`n:`), `web/src/screens/Add.tsx` («Да, проверить») | `WeightedDistance.Costs`, `FuzzyTest.OcrStringFromArchitecture`, `FuzzyTest.DistortedSerialFoundByVariants`, `FuzzyTest.AmbiguousOrFarIsNotConfident`, `FuzzyTest.ExactMatchIsNotFuzzy`, `FuzzyProperty.MatchesBruteForceOn10kRecords`, `DomainPgTest.FuzzyNumberConfirmed`, `BotTest.ConfirmSuggestedNumber`, `Card.NeedsConfirmationAsksQuestion`, web `Add.test.tsx` «подсказка → «Да, проверить» → карточка» |
+| F1 (скорость) | Точный ≤ 1 мс, нечёткий ≤ 5 мс (p99) | `libs/snapshot` (mmap, `serial_index`), `libs/verify` | `bench/search_bench.cpp` + `scripts/ci/bench.sh` (порог в CI) |
+| Долги этапа 2 | Согласие в мини-приложении; «Подробнее» открывает документ | `rest_api.cpp` (`authorize`, `consent`), `web/src/components/ConsentGate.tsx`, `bot/card.cpp` (`document_start_param`), `web/src/max/bridge.ts` (`getStartTarget`) | `RestApiTest.ConsentRequired`, web `ConsentGate.test.tsx`, `Card.DocumentStartParamFitsMaxLimits`, web `App.test.tsx` «Подробнее из бота открывает документ», `bridge.test.ts` |
+| Надёжность (АРХ §10) | fuzz, TSan, контракт C7 | `fuzz/`, `tests/concurrency/`, `openapi.yaml`, `scripts/ci/contract-test.sh` | fuzz smoke 7 × 60 с, `SnapshotSwap.*`, `RateLimiterConcurrency.*`, schemathesis (все проверки) + 405/`Allow` |
+
