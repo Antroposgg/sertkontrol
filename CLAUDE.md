@@ -29,7 +29,7 @@
 | `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 2 ✔ (`0003`) | [→](db/README.md) |
 | `data/demo/` | R1 | Демо-источники N и N+1 | этап 2 ✔ | [→](data/demo/README.md) |
 | `tests/` | все | Модульные, property, PG, TSan (`tests/concurrency`), сценарий жюри | этап 3 ✔ | [→](tests/README.md) |
-| `fuzz/` | все | 7 целей libFuzzer + корпуса | этап 3 ✔ | [→](fuzz/README.md) |
+| `fuzz/` | все | 8 целей libFuzzer + корпуса | этап 4 (`fuzz_registry_url`) | [→](fuzz/README.md) |
 | `bench/` | все | Google Benchmark против АРХ §2 | этап 3 ✔ | [→](bench/README.md) |
 
 Роли (АРХ §1): R1 «Данные реестра», R2 «Поиск и вердикт», R3 «Backend и распознавание», R4 «MAX и продукт».
