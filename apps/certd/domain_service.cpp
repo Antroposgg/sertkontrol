@@ -329,7 +329,8 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_for_user(UserRow user, Ad
   if (!snap) {
     co_return no_snapshot();
   }
-  auto verdict = verify::check(*snap, verify::Query{.text = request.number, .today = today_()});
+  auto verdict = verify::check(
+      *snap, verify::Query{.text = request.number, .today = today_(), .supplier_inn = request.supplier_inn});
   if (verdict.number.empty()) {
     co_return Error{ErrorCode::kNumberNotRecognized, "не удалось распознать номер документа"};
   }

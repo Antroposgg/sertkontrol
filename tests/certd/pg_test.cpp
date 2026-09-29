@@ -4,6 +4,7 @@
 #include <drogon/orm/DbClient.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -274,6 +275,17 @@ TEST_F(DomainPgTest, RegistryLinkFromQr) {
   const auto missing = run(svc->check_text(alice, "https://pub.fsa.gov.ru/rds/declaration/view/1/common"));
   ASSERT_FALSE(missing.has_value());
   EXPECT_EQ(missing.error().code, ErrorCode::kNotFoundInSnapshot);
+}
+
+// F8 через домен: ИНН поставщика из запроса попадает в сверку, запись всё равно ставится на контроль.
+TEST_F(DomainPgTest, SupplierMismatchOnAdd) {
+  const auto r = run(svc->add_to_portfolio(
+      alice, AddRequest{.number = "RU D-CR.PA08.B.89369/26", .supplier_inn = "7700000023"}));
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  EXPECT_EQ(r.value().verdict.level, verify::Level::kWarning);
+  EXPECT_TRUE(std::ranges::any_of(r.value().verdict.findings,
+                                  [](const verify::Finding& f) { return f.rule == "supplier.mismatch"; }));
+  EXPECT_EQ(r.value().item.supplier_inn, "7700000023");
 }
 
 TEST_F(DomainPgTest, AddFromChecksAndBatch) {

@@ -306,6 +306,18 @@ TEST_F(BotTest, SupplierDialog) {
   EXPECT_NE(last().text.find("Не получилось"), std::string::npos);
 }
 
+// F8: поставщик с другим ИНН, чем у заявителя, — предупреждение в подтверждении, а не отказ.
+TEST_F(BotTest, SupplierMismatchWarns) {
+  consent();
+  text("RU D-CR.PA08.B.89369/26");  // заявитель — ИНН 7700000016
+  press(last().buttons[0][1].payload);
+  text("7700000023");  // верная контрольная цифра, но другой ИНН
+  const auto done = last();
+  EXPECT_NE(done.text.find("поставщик — ИНН 7700000023"), std::string::npos) << done.text;
+  EXPECT_NE(done.text.find("⚠️ Документ оформлен не на поставщика"), std::string::npos) << done.text;
+  EXPECT_TRUE(maxapi::validate(done).has_value());
+}
+
 TEST_F(BotTest, OtherUpdatesIgnored) {
   EXPECT_EQ(handle(maxapi::OtherUpdate{.type = "dialog_muted"}), "");
   EXPECT_TRUE(outbox.entries().empty());

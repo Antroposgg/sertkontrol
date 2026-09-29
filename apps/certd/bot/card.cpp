@@ -307,11 +307,22 @@ OutgoingMessage ask_supplier_inn(std::int64_t user) {
 }
 
 OutgoingMessage supplier_attached(std::int64_t user, const AddResult& added, const CardOptions& options) {
+  std::string text = "🔔 <b>" + html_escape(verify::display_number(added.item.doc_key)) +
+                     "</b> на контроле, поставщик — ИНН " +
+                     html_escape(added.item.supplier_inn.value_or("")) +
+                     ". Сообщу, если статус в реестре изменится.";
+  // Сверка «заявитель = поставщик» (F8): результат и, при несовпадении, что делать.
+  for (const auto& f : added.verdict.findings) {
+    if (f.rule == "supplier.mismatch") {
+      text += "\n\n⚠️ " + html_escape(f.text);
+    } else if (f.rule == "supplier.match") {
+      text += "\n\n✅ " + html_escape(f.text);
+    } else if (f.rule == "supplier.unknown" || f.rule == "advice.check_supplier") {
+      text += "\n" + html_escape(f.text);
+    }
+  }
   OutgoingMessage m{.max_user_id = user,
-                    .text = "🔔 <b>" + html_escape(verify::display_number(added.item.doc_key)) +
-                            "</b> на контроле, поставщик — ИНН " +
-                            html_escape(added.item.supplier_inn.value_or("")) +
-                            ". Сообщу, если статус в реестре изменится.",
+                    .text = std::move(text),
                     .kind = MessageKind::kReply,
                     .is_demo = added.verdict.is_demo};
   std::vector<Button> row{{.text = "Снять с контроля", .payload = "d:" + std::to_string(added.item.id)}};

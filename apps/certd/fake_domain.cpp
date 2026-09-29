@@ -107,7 +107,8 @@ drogon::Task<Result<Page<PortfolioItem>>> FakeDomainService::list_portfolio(User
 
 Result<AddResult> FakeDomainService::add_locked(std::int64_t owner, AddRequest request) {
   const auto snap = snapshot_locked(owner);
-  auto verdict = fake::check(*snap, verify::Query{.text = request.number, .today = today_});
+  auto verdict = fake::check(
+      *snap, verify::Query{.text = request.number, .today = today_, .supplier_inn = request.supplier_inn});
   if (verdict.number.empty()) {
     return Error{ErrorCode::kNumberNotRecognized, "Не удалось распознать номер"};
   }
