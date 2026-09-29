@@ -31,6 +31,7 @@
 | `recognition_pool.*` | Пул потоков распознавания с ограниченной очередью (ADR-0004) |
 | `rate_limiter.*` | 30 проверок в минуту на пользователя (АРХ §10) |
 | `media.*`, `clock.hpp` | Тип файла по сигнатуре; «сегодня» по Москве |
+| `registry_link.*` | `number_by_registry_link`: номер записи по ссылке реестра из QR (F10); `check_text` проверяет ссылку раньше номеров |
 | `bot_identity.*` | `resolve_bot_username`: username бота для `web_app` из `GET /me`; неверный `web_app` MAX отвергает всё сообщение (HTTP 404 `Link not found`) |
 | `config.*`, `health.*`, `main.cpp` | Конфигурация из окружения, `/healthz`, сборка компонентов, `LISTEN`, таймеры фоновых циклов |
 

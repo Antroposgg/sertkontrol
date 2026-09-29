@@ -270,6 +270,10 @@ OutgoingMessage error_message(std::int64_t user, const Error& error) {
           "Не нашёл номер документа. Пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку из "
           "реестра.";
       break;
+    case ErrorCode::kNotFoundInSnapshot:
+      // Ссылка на реестр (QR выписки), а записи с таким ID нет в данных: detail называет дату данных.
+      text = "Записи реестра по этой ссылке нет в данных — пришлите номер документа, проверю его по номеру.";
+      break;
     case ErrorCode::kUnsupportedMediaType:
       text = "Пока принимаю PDF-выписки и номера текстом. Фото и сканы — в следующих версиях.";
       break;

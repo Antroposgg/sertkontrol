@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "registry_link.hpp"
 #include "sertkontrol/fakes.hpp"
 
 namespace sk::certd {
@@ -57,6 +58,14 @@ drogon::Task<Result<Ok>> FakeDomainService::give_consent(UserContext user) {
 }
 
 drogon::Task<Result<CheckResult>> FakeDomainService::check_text(UserContext user, std::string text) {
+  // Как в DomainServiceImpl: ссылка на запись реестра идёт первой.
+  if (verify::parse_registry_url(text).has_value()) {
+    auto number = number_by_registry_link(*snapshot_for(user.max_user_id), text);
+    if (!number) {
+      co_return number.error();
+    }
+    co_return check_all(user.max_user_id, {std::move(number).value()});
+  }
   const auto raws = fake::find_numbers(text, kMaxNumbersPerMessage);
   if (raws.empty()) {
     co_return Error{ErrorCode::kNumberNotRecognized, "В сообщении не найден номер документа"};

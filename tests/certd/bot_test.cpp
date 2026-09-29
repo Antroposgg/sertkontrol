@@ -106,6 +106,21 @@ TEST_F(BotTest, StartAndHelpCommands) {
   EXPECT_EQ(last().text.find("Как пользоваться"), std::string::npos);
 }
 
+// F10: ссылка на запись реестра (QR выписки, вставленная в чат) → карточка документа по ID записи.
+TEST_F(BotTest, RegistryLinkGivesCard) {
+  consent();
+  EXPECT_EQ(text("https://pub.fsa.gov.ru/rds/declaration/view/1/common"), "");
+  EXPECT_EQ(last().kind, maxapi::MessageKind::kVerdict);
+  EXPECT_NE(last().text.find("RU Д-CR.PA08.B.89369/26"), std::string::npos) << last().text;
+  // ID есть, но это сертификат, а ссылка — на декларацию: разные реестры.
+  outbox.clear();
+  EXPECT_EQ(text("https://pub.fsa.gov.ru/rds/declaration/view/2/common"), "");
+  EXPECT_NE(last().text.find("Записи реестра по этой ссылке нет"), std::string::npos) << last().text;
+  outbox.clear();
+  EXPECT_EQ(text("https://pub.fsa.gov.ru/rss/certificate/view/2/common"), "");
+  EXPECT_NE(last().text.find("RU С-RU.AB12.B.00017/24"), std::string::npos) << last().text;
+}
+
 TEST_F(BotTest, StartCommandWithoutConsentAsksForIt) {
   EXPECT_EQ(text("/start"), "");
   EXPECT_TRUE(has_payload(last(), "c:1"));

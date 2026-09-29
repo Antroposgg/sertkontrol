@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Сертконтроль — REST API мини-приложения
-  version: 1.3.0
+  version: 1.4.0
   summary: Контракт C7 (АРХ §5, §8). Реализация — apps/certd/rest_api.cpp.
   description: |
     API для мини-приложения MAX. Мини-приложение и API на одном origin: CORS не нужен, cookie нет.
@@ -70,7 +70,10 @@ paths:
         - name: number
           in: query
           required: true
-          description: Номер в любой раскладке, например «ЕАЭС N RU Д-CR.РА08.В.89369/26». Берётся первый номер из строки.
+          description: >-
+            Номер в любой раскладке, например «ЕАЭС N RU Д-CR.РА08.В.89369/26» (берётся первый номер из строки),
+            или ссылка на запись реестра из QR выписки — https://pub.fsa.gov.ru/rds/declaration/view/{id}/common
+            (документ ищется по ID записи; ссылка важнее номеров в той же строке).
           schema: { type: string, minLength: 1 }
       responses:
         '200':
@@ -81,6 +84,11 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/ConsentRequired' }
+        '404':
+          description: Ссылка на запись реестра, но записи с таким ID нет в данных (`not_found_in_snapshot`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '422': { $ref: '#/components/responses/NumberNotRecognized' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/SnapshotUnavailable' }

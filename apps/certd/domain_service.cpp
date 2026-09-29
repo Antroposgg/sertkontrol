@@ -12,6 +12,7 @@
 #include <json/value.h>
 #include <json/writer.h>
 
+#include "registry_link.hpp"
 #include "sertkontrol/snapshot/lookup.hpp"
 #include "sertkontrol/verify/inn.hpp"
 
@@ -231,11 +232,30 @@ drogon::Task<Result<CheckResult>> DomainServiceImpl::check_text(UserContext user
   if (!limiter_.try_acquire(user.max_user_id)) {
     co_return Error{ErrorCode::kRateLimited, "не больше 30 проверок в минуту, попробуйте чуть позже"};
   }
-  auto raws = canon::find_numbers(text, kMaxNumbersPerMessage);
-  if (raws.empty()) {
-    co_return Error{
-        ErrorCode::kNumberNotRecognized,
-        "не нашёл номер документа: пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку"};
+  // Ссылка на запись реестра (QR выписки, F10) точнее номера из текста и идёт первой: в самой ссылке
+  // грамматика номера может найти ложный «номер» (docs/plan.md §8.2 п.2).
+  std::vector<std::string> raws;
+  if (verify::parse_registry_url(text).has_value()) {
+    const auto u = co_await ensure_user(user.max_user_id);
+    if (!u) {
+      co_return u.error();
+    }
+    const auto snap = snapshot_of(u.value());
+    if (!snap) {
+      co_return no_snapshot();
+    }
+    auto number = number_by_registry_link(*snap, text);
+    if (!number) {
+      co_return number.error();
+    }
+    raws.push_back(std::move(number).value());
+  } else {
+    raws = canon::find_numbers(text, kMaxNumbersPerMessage);
+    if (raws.empty()) {
+      co_return Error{
+          ErrorCode::kNumberNotRecognized,
+          "не нашёл номер документа: пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку"};
+    }
   }
   co_return co_await check_numbers(user, std::move(raws), started, false);
 }
