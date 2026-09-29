@@ -12,7 +12,8 @@
 | `include/sertkontrol/maxapi/auth.hpp`, `src/auth.cpp` | `validate_init_data` (официальный алгоритм, `auth_date ≤ 24 ч`), `secret_matches` (`CRYPTO_memcmp`), `percent_encode/decode` |
 | `include/sertkontrol/maxapi/update.hpp`, `src/update.cpp` | `parse_update` → `MessageCreated` / `MessageCallback` / `BotStarted` / `OtherUpdate`, `dedup_key` |
 | `include/sertkontrol/maxapi/message.hpp`, `src/message.cpp` | C9 `OutgoingMessage`, `Button`, `validate` (лимиты MAX), `to_outbox_json` / `from_outbox_json`, `to_new_message_body`, `html_escape` |
-| `include/sertkontrol/maxapi/bot_api.hpp`, `src/http_bot_api.cpp` | Интерфейс `BotApi`, `HttpBotApi` (Drogon `HttpClient`), `split_url` |
+| `include/sertkontrol/maxapi/bot_api.hpp`, `src/http_bot_api.cpp` | Интерфейс `BotApi`, `HttpBotApi` (libcurl в своём пуле потоков, ADR-0014), `split_url` |
+| `src/curl_http.hpp/.cpp` | Блокирующий HTTPS-запрос через libcurl: только https, проверка сертификата, лимит ответа |
 | `include/sertkontrol/maxapi/rate_limit.hpp`, `src/rate_limit.cpp` | `TokenBucket`, `SendLimiter` (глобально C = 5, r = 25/с; на чат C = 1, r = 1/с), `Permit` |
 | `include/sertkontrol/maxapi/fake_bot_api.hpp` | `RecordingBotApi` — для тестов бота и outbox |
 
@@ -20,7 +21,7 @@
 Сверены 26.09.2026 с dev.max.ru и `schema.yaml` официального Go-клиента — таблица в [docs/plan.md §5.1](../../docs/plan.md). Главное: `https://platform-api2.max.ru`, токен в `Authorization`, TLS на сертификате Минцифры ([ADR-0012](../../docs/adr/0012-mintsifry-root-ca.md)), `text ≤ 4000`, `callback.payload ≤ 1024`, `open_app` требует `web_app`.
 
 ## Зависимости
-- Зависит от: `sk::contracts`, Drogon (HTTP-клиент, jsoncpp), OpenSSL.
+- Зависит от: `sk::contracts`, Drogon (корутины, jsoncpp), libcurl (исходящий HTTPS, ADR-0014), OpenSSL.
 - От него зависят: `apps/certd` (webhook, REST, бот, outbox).
 
 ## Инварианты и безопасность
@@ -34,6 +35,10 @@
 
 ## Тесты
 `tests/maxapi/` → `maxapi_test` (лимитер: формула ведра, пауза после 429, чистка вёдер, property «≤ C + r·τ в любом окне» на 8 000 случайных запросах глобально и по чатам; initData: тест-вектор из независимой реализации, 8 видов подделки, неполные подписанные данные, срок; события по фикстурам `tests/fixtures/max/`; C9 roundtrip; `NewMessageBody`; лимиты) и `maxapi_http_test` (HTTP-клиент против локального сервера Drogon: путь, query, заголовок, тело, коды 401/400/429/5xx, скачивание, недоступный сервер).
+
+## Почему не `drogon::HttpClient`
+trantor из apt Ubuntu 24.04 собран без TLS: Drogon шлёт на `https://` открытый HTTP (найдено на VPS — MAX отвечал 400).
+Тест `maxapi_tls_test` проверяет настоящее TLS-соединение через `openssl s_server`.
 
 ## Ограничения
 - Фикстуры событий собраны по схеме, а не записаны с настоящего webhook — ручная проверка в MAX.

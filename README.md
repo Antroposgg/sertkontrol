@@ -139,6 +139,30 @@ docker compose up --build
 - Исходящие сообщения идут не быстрее лимитов MAX (30 запросов/с, 2 сообщения/с в чат, АРХ §7.6); при 429 отправитель
   делает паузу и повторяет, поэтому длинная рассылка уведомлений растягивается во времени.
 
+## Развёртывание на VPS
+
+1. VPS в РФ, Docker, домен с A-записью на сервер; во входящем файрволе открыты **80 и 443** (Caddy получает
+   сертификат Let's Encrypt и принимает webhook MAX только на 443).
+2. `.env` рядом с `compose.yaml`: `SK_DOMAIN`, `MAX_BOT_TOKEN`, `MAX_WEBHOOK_SECRET`, `MAX_BOT_USERNAME`,
+   `POSTGRES_PASSWORD`, `POSTGRES_HOST_AUTH_METHOD=scram-sha-256`.
+3. Запуск: `docker compose --profile prod up -d --build`; проверка — `https://<домен>/healthz` → 200.
+   Бот работает внутри контейнера `certd`: webhook `/max/webhook`, обработка событий, отправка сообщений.
+4. **Подписка webhook — один раз после первого запуска** (без неё MAX не шлёт боту события). Команда выполняется
+   внутри `certd`: там токен и корень Минцифры, без которого TLS к API MAX не проверится:
+
+   ```bash
+   docker compose --profile prod exec certd sh -c 'curl -s -X POST -H "Authorization: $MAX_BOT_TOKEN" -H "Content-Type: application/json" -d "{\"url\":\"https://$SK_DOMAIN/max/webhook\",\"update_types\":[\"bot_started\",\"message_created\",\"message_callback\"],\"secret\":\"$MAX_WEBHOOK_SECRET\"}" https://platform-api2.max.ru/subscriptions'
+   ```
+
+   Ожидается `{"success":true}`; список подписок — `GET https://platform-api2.max.ru/subscriptions` тем же способом.
+5. В настройках бота на платформе MAX указать адрес мини-приложения `https://<домен>/`.
+6. Лог: `docker compose --profile prod logs -f certd`. Ошибки отправки видны как `outbox N не отправлено: …`.
+
+**Чем проверить.** Отправьте боту номер из демо-данных, например `ЕАЭС N RU Д-CR.РА08.В.89369/26`
+(остальные номера и ожидаемые вердикты — [`data/demo/README.md`](data/demo/README.md)), или перешлите PDF
+[`tests/fixtures/pdf/extract-89369-26.pdf`](tests/fixtures/pdf/extract-89369-26.pdf) — тестовая выписка с номером в
+тексте и QR со ссылкой на реестр.
+
 ## Ручная проверка в MAX (чек-лист)
 
 - [ ] Webhook: `POST /subscriptions` с `url=https://<домен>/max/webhook`, `secret=<MAX_WEBHOOK_SECRET>`; событие доходит, ответ 200.

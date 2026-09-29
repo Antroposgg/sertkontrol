@@ -265,6 +265,11 @@ int run() {
   std::optional<sk::certd::Webhook> webhook;
   std::optional<sk::maxapi::SendLimiter> send_limiter;
   std::optional<sk::certd::OutboxSender> sender;
+  if (cfg.bot_enabled() && !sk::maxapi::HttpBotApi::tls_available()) {
+    // Без TLS токен ушёл бы открытым текстом, а MAX ответил бы 400 (ADR-0014).
+    std::cerr << "certd: libcurl собран без TLS — бот не может обращаться к API MAX\n";
+    return 2;
+  }
   if (cfg.bot_enabled()) {
     bot_api.emplace(sk::maxapi::BotApiConfig{
         .base_url = cfg.max_api_base_url, .token = cfg.max_bot_token, .bot_username = cfg.max_bot_username});

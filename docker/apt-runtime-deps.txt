@@ -11,3 +11,4 @@ ca-certificates
 openssl
 tzdata
 curl
+libcurl4t64

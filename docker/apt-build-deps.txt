@@ -24,3 +24,4 @@ libtesseract-dev
 libxxhash-dev
 libexpat1-dev
 libsimdjson-dev
+libcurl4-openssl-dev
