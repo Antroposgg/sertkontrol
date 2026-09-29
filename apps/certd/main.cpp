@@ -266,7 +266,7 @@ int run() {
   std::optional<sk::maxapi::SendLimiter> send_limiter;
   std::optional<sk::certd::OutboxSender> sender;
   if (cfg.bot_enabled() && !sk::maxapi::HttpBotApi::tls_available()) {
-    // Без TLS токен ушёл бы открытым текстом, а MAX ответил бы 400 (ADR-0014).
+    // Без TLS токен ушёл бы открытым текстом, а MAX ответил бы 400 (ADR-0015).
     std::cerr << "certd: libcurl собран без TLS — бот не может обращаться к API MAX\n";
     return 2;
   }

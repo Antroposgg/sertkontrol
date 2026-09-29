@@ -20,3 +20,4 @@
 | [0012](0012-mintsifry-root-ca.md) | Корневой сертификат Минцифры в образе certd | принят | этап 1 |
 | [0013](0013-dev-auth-without-max.md) | Мини-приложение без MAX при локальном запуске — dev-пользователь | принят | этап 1 |
 | [0014](0014-history-and-demo-endpoints.md) | История — `GET /history?number=`; `simulate-update` → `200 {notified}`; `POST /demo/reset` | принят | этап 2 |
+| [0015](0015-libcurl-outgoing-https.md) | Исходящие HTTPS-запросы к MAX — libcurl (trantor из apt без TLS) | принят | после этапа 2 |

@@ -1,5 +1,5 @@
 /// @file curl_http.hpp
-/// @brief Блокирующий HTTP(S)-запрос через libcurl (внутренний заголовок libs/maxapi, ADR-0014).
+/// @brief Блокирующий HTTP(S)-запрос через libcurl (внутренний заголовок libs/maxapi, ADR-0015).
 ///
 /// Почему не `drogon::HttpClient`: trantor из apt Ubuntu 24.04 собран без TLS (`tlsBackend() == "None"`),
 /// и Drogon для `https://` молча отправляет обычный HTTP на порт 443.

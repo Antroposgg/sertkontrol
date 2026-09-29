@@ -12,7 +12,7 @@
 | `include/sertkontrol/maxapi/auth.hpp`, `src/auth.cpp` | `validate_init_data` (официальный алгоритм, `auth_date ≤ 24 ч`), `secret_matches` (`CRYPTO_memcmp`), `percent_encode/decode` |
 | `include/sertkontrol/maxapi/update.hpp`, `src/update.cpp` | `parse_update` → `MessageCreated` / `MessageCallback` / `BotStarted` / `OtherUpdate`, `dedup_key` |
 | `include/sertkontrol/maxapi/message.hpp`, `src/message.cpp` | C9 `OutgoingMessage`, `Button`, `validate` (лимиты MAX), `to_outbox_json` / `from_outbox_json`, `to_new_message_body`, `html_escape` |
-| `include/sertkontrol/maxapi/bot_api.hpp`, `src/http_bot_api.cpp` | Интерфейс `BotApi`, `HttpBotApi` (libcurl в своём пуле потоков, ADR-0014), `split_url` |
+| `include/sertkontrol/maxapi/bot_api.hpp`, `src/http_bot_api.cpp` | Интерфейс `BotApi`, `HttpBotApi` (libcurl в своём пуле потоков, ADR-0015), `split_url` |
 | `src/curl_http.hpp/.cpp` | Блокирующий HTTPS-запрос через libcurl: только https, проверка сертификата, лимит ответа |
 | `include/sertkontrol/maxapi/rate_limit.hpp`, `src/rate_limit.cpp` | `TokenBucket`, `SendLimiter` (глобально C = 5, r = 25/с; на чат C = 1, r = 1/с), `Permit` |
 | `include/sertkontrol/maxapi/fake_bot_api.hpp` | `RecordingBotApi` — для тестов бота и outbox |
@@ -21,7 +21,7 @@
 Сверены 26.09.2026 с dev.max.ru и `schema.yaml` официального Go-клиента — таблица в [docs/plan.md §5.1](../../docs/plan.md). Главное: `https://platform-api2.max.ru`, токен в `Authorization`, TLS на сертификате Минцифры ([ADR-0012](../../docs/adr/0012-mintsifry-root-ca.md)), `text ≤ 4000`, `callback.payload ≤ 1024`, `open_app` требует `web_app`.
 
 ## Зависимости
-- Зависит от: `sk::contracts`, Drogon (корутины, jsoncpp), libcurl (исходящий HTTPS, ADR-0014), OpenSSL.
+- Зависит от: `sk::contracts`, Drogon (корутины, jsoncpp), libcurl (исходящий HTTPS, ADR-0015), OpenSSL.
 - От него зависят: `apps/certd` (webhook, REST, бот, outbox).
 
 ## Инварианты и безопасность
