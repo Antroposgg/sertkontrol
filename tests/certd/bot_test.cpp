@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "bot/card.hpp"
+#include "bot_identity.hpp"
 #include "fake_domain.hpp"
 #include "memory_ports.hpp"
 #include "sertkontrol/fakes.hpp"
@@ -84,6 +85,30 @@ TEST_F(BotTest, ConsentThenHelp) {
   EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos);  // повторный старт — справка
   press("h:1");
   EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos);
+}
+
+// Набранный /start приходит обычным сообщением: справка, а не «Не нашёл номер»; текст после команды
+// проверяется.
+TEST_F(BotTest, StartAndHelpCommands) {
+  consent();
+  for (const auto* cmd : {"/start", " /help ", "/start@sertkontrol_bot"}) {
+    SCOPED_TRACE(cmd);
+    outbox.clear();
+    EXPECT_EQ(text(cmd), "");
+    EXPECT_NE(last().text.find("Как пользоваться"), std::string::npos) << last().text;
+  }
+  outbox.clear();
+  EXPECT_EQ(text("/start\nЕАЭС N RU D-CR.PA08.B.89369/26"), "");
+  EXPECT_EQ(last().kind, maxapi::MessageKind::kVerdict);
+  // Команда — только первое слово: «/starting» и номер после неё — обычный текст.
+  outbox.clear();
+  EXPECT_EQ(text("/starting"), "");
+  EXPECT_EQ(last().text.find("Как пользоваться"), std::string::npos);
+}
+
+TEST_F(BotTest, StartCommandWithoutConsentAsksForIt) {
+  EXPECT_EQ(text("/start"), "");
+  EXPECT_TRUE(has_payload(last(), "c:1"));
 }
 
 // F3 в боте: карточка с блоками и метками, датой данных, пометкой тестовых данных и кнопками.
@@ -407,6 +432,33 @@ TEST_F(WebhookTest, SecretParsingAndDedup) {
   EXPECT_EQ(outbox.entries().size(), 1U);  // обработано ровно один раз
   EXPECT_EQ(inbound.processed().size(), 1U);
   EXPECT_EQ(inbound.processed().begin()->second, "");
+}
+
+// open_app: username — из GET /me; MAX_BOT_USERNAME — только запасной (отображаемое имя ломало все ответы).
+TEST(BotIdentity, UsernameFromGetMe) {
+  maxapi::RecordingBotApi api;
+  const auto resolve = [&](std::string configured) {
+    return drogon::sync_wait(resolve_bot_username(&api, std::move(configured)));
+  };
+  api.set_me(maxapi::BotInfo{.user_id = 7, .username = "sertkontrol_bot"});
+  auto r = resolve("");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_TRUE(r.warning.empty());
+  r = resolve("Хакатон МАХ 476");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_NE(r.warning.find("не совпадает"), std::string::npos);
+
+  api.set_me(maxapi::BotInfo{.user_id = 7});
+  r = resolve("sertkontrol_bot");
+  EXPECT_TRUE(r.username.empty());  // у бота нет username — кнопки open_app выключены
+  EXPECT_NE(r.warning.find("выключены"), std::string::npos);
+
+  api.set_me(Error{ErrorCode::kInternal, "сеть"});
+  r = resolve("sertkontrol_bot");
+  EXPECT_EQ(r.username, "sertkontrol_bot");
+  EXPECT_NE(r.warning.find("GET /me"), std::string::npos);
+  r = resolve("");
+  EXPECT_TRUE(r.username.empty());
 }
 
 }  // namespace

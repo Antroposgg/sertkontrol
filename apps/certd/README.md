@@ -31,12 +31,13 @@
 | `recognition_pool.*` | Пул потоков распознавания с ограниченной очередью (ADR-0004) |
 | `rate_limiter.*` | 30 проверок в минуту на пользователя (АРХ §10) |
 | `media.*`, `clock.hpp` | Тип файла по сигнатуре; «сегодня» по Москве |
+| `bot_identity.*` | `resolve_bot_username`: username бота для `web_app` из `GET /me`; неверный `web_app` MAX отвергает всё сообщение (HTTP 404 `Link not found`) |
 | `config.*`, `health.*`, `main.cpp` | Конфигурация из окружения, `/healthz`, сборка компонентов, `LISTEN`, таймеры фоновых циклов |
 
 ## Переменные окружения
 `CERTD_PORT` (8080), `CERTD_THREADS` (0), `CERTD_DB_CONNECTIONS` (4), `POSTGRES_HOST/PORT/DB/USER/PASSWORD`,
 `SNAPSHOT_DIR`, `WEB_ROOT`, `MAX_BOT_TOKEN` (пусто — бот выключен), `MAX_WEBHOOK_SECRET` (обязателен с токеном,
-`[A-Za-z0-9_-]{5,256}`), `MAX_BOT_USERNAME` (для кнопок `open_app`), `MAX_API_BASE_URL`
+`[A-Za-z0-9_-]{5,256}`), `MAX_BOT_USERNAME` (запасной username для кнопок `open_app`; основной — из `GET /me`, `bot_identity.hpp`), `MAX_API_BASE_URL`
 (`https://platform-api2.max.ru`), `CERTD_DEV_USER_ID` (только без токена, ADR-0013), `CERTD_RECOG_THREADS` (2),
 `CERTD_RECOG_QUEUE` (8).
 

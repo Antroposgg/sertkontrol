@@ -50,7 +50,7 @@ docker compose up --build
 |---|---|---|
 | `MAX_BOT_TOKEN` | — | Токен бота MAX; пусто — бот выключен |
 | `MAX_WEBHOOK_SECRET` | — | Секрет webhook `X-Max-Bot-Api-Secret`, 5–256 символов `A-Za-z0-9_-`; обязателен с токеном |
-| `MAX_BOT_USERNAME` | — | Публичное имя бота — для кнопок, открывающих мини-приложение |
+| `MAX_BOT_USERNAME` | — | Необязательно. Username бота (не отображаемое имя) для кнопок, открывающих мини-приложение. `certd` сам берёт его из `GET /me` при старте; переменная — запасное значение, если MAX не ответил, а расхождение пишется в лог |
 | `MAX_API_BASE_URL` | `https://platform-api2.max.ru` | Bot API MAX |
 | `CERTD_DEV_USER_ID` | `1000001` | Пользователь мини-приложения в браузере без MAX; игнорируется при заданном токене |
 | `CERTD_RECOG_THREADS`, `CERTD_RECOG_QUEUE` | `2`, `8` | Пул распознавания PDF и его очередь |
@@ -158,7 +158,7 @@ docker compose up --build
 
 1. VPS в РФ, Docker, домен с A-записью на сервер; во входящем файрволе открыты **80 и 443** (Caddy получает
    сертификат Let's Encrypt и принимает webhook MAX только на 443).
-2. `.env` рядом с `compose.yaml`: `SK_DOMAIN`, `MAX_BOT_TOKEN`, `MAX_WEBHOOK_SECRET`, `MAX_BOT_USERNAME`,
+2. `.env` рядом с `compose.yaml`: `SK_DOMAIN`, `MAX_BOT_TOKEN`, `MAX_WEBHOOK_SECRET`,
    `POSTGRES_PASSWORD`, `POSTGRES_HOST_AUTH_METHOD=scram-sha-256`.
 3. Запуск: `docker compose --profile prod up -d --build`; проверка — `https://<домен>/healthz` → 200.
    Бот работает внутри контейнера `certd`: webhook `/max/webhook`, обработка событий, отправка сообщений.
@@ -182,7 +182,9 @@ docker compose up --build
 
 - [ ] Webhook: `POST /subscriptions` с `url=https://<домен>/max/webhook`, `secret=<MAX_WEBHOOK_SECRET>`; событие доходит, ответ 200.
 - [ ] Скачивание PDF-вложения по `payload.url` без токена работает.
-- [ ] Кнопки `callback`, `link`, `open_app` (с `MAX_BOT_USERNAME`) отображаются и срабатывают в мобильном и веб-клиенте.
+- [ ] Кнопки `callback`, `link`, `open_app` отображаются и срабатывают в мобильном и веб-клиенте; в логе `certd` при старте —
+  `кнопки open_app: web_app=<username>`.
+- [ ] Набранные `/start` и `/help` → справка; `/start ЕАЭС N …` → карточка.
 - [ ] Мини-приложение открывается из бота, `X-Max-Init-Data` проходит проверку подписи; экран согласия показывается один раз.
 - [ ] «Подробнее» под карточкой открывает «Документ» с номером (`start_param`).
 - [ ] Номер с ошибкой → «Это номер …?» → «Да» → карточка; «Нет» → просьба прислать номер ещё раз.
