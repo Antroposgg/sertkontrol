@@ -23,7 +23,7 @@ jobs:
     name: C++ · GCC 13 Release
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/cpp-build-test.sh gcc-release
 
@@ -31,7 +31,7 @@ jobs:
     name: C++ · clang 18 ASan/UBSan
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/cpp-build-test.sh clang-asan
 
@@ -39,7 +39,7 @@ jobs:
     name: C++ · зависимости, clang-format, clang-tidy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/deps-check.sh
       - run: scripts/ci/cpp-format-check.sh
@@ -49,7 +49,7 @@ jobs:
     name: C++ · clang 18 ThreadSanitizer
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/cpp-build-test.sh clang-tsan
 
@@ -57,10 +57,10 @@ jobs:
     name: C++ · бенчмарки против целей АРХ §2
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/bench.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bench-report
@@ -70,10 +70,10 @@ jobs:
     name: C++ · fuzz smoke (60 с на цель)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/fuzz-smoke.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: fuzz-findings
@@ -85,10 +85,10 @@ jobs:
     name: C++ · покрытие ≥ 70%
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/install-deps.sh build dev
       - run: scripts/ci/cpp-coverage.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: cpp-coverage
@@ -98,15 +98,15 @@ jobs:
     name: БД · миграции PostgreSQL 16
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/db-migrations.sh
 
   web:
     name: web · eslint, tsc, vitest ≥ 70%, build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -121,11 +121,11 @@ jobs:
       # Зеркало рядом с раннером GitHub (ADR-0011); по умолчанию в образе — зеркало в РФ.
       APT_MIRROR: http://azure.archive.ubuntu.com/ubuntu
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/ci/docker-build.sh
       - run: scripts/ci/compose-smoke.sh
       - run: scripts/ci/contract-test.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: contract-junit
@@ -136,7 +136,7 @@ jobs:
     name: Секреты · gitleaks
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: scripts/ci/install-deps.sh dev
