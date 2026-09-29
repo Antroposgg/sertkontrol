@@ -219,7 +219,7 @@ TEST_F(RulesTest, EveryRuleIsDocumentedInCatalog) {
   for (const auto* n : {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10001/25", "RU D-RU.PA01.B.10003/21",
                         "RU D-RU.PA01.B.10004/25", "RU C-RU.AЯ46.B.10005/24", "RU D-RU.PA01.B.10006/25",
                         "RU D-RU.PA01.B.10007/25", "RU D-RU.PA01.B.10008/25", "RU D-RU.PA01.B.10009/25",
-                        "RU D-RU.PA05.B.20000/25", "x"}) {
+                        "RU D-RU.PA05.B.20000/25", "RU D-RU.PA01.B.1000Z/25", "x"}) {
     for (const auto& f : run(n).findings) {
       used.insert(f.rule);
     }

@@ -37,6 +37,7 @@ sk_add_test(verify_test
   verify/rules_test.cpp
   verify/text_test.cpp
   verify/inn_test.cpp
+  verify/fuzzy_test.cpp
   LIBS sk::verify)
 target_compile_definitions(verify_test PRIVATE SK_RULES_MD="${PROJECT_SOURCE_DIR}/docs/rules.md")
 

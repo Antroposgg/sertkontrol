@@ -1,5 +1,5 @@
-# C4 — поиск и правила вердикта (R2). Нечёткий поиск — этап 3.
-add_library(sk_verify STATIC src/verify.cpp src/text.cpp src/inn.cpp)
+# C4 — поиск, нечёткий поиск (АРХ §7.2) и правила вердикта (R2).
+add_library(sk_verify STATIC src/verify.cpp src/text.cpp src/inn.cpp src/fuzzy.cpp)
 add_library(sk::verify ALIAS sk_verify)
 target_include_directories(sk_verify PUBLIC include)
 target_link_libraries(sk_verify PUBLIC sk::contracts sk::canon sk::snapshot)
