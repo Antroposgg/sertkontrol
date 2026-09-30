@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "import_report.hpp"
+#include "registry_link.hpp"
 #include "sertkontrol/fakes.hpp"
 
 namespace sk::certd {
@@ -57,6 +59,14 @@ drogon::Task<Result<Ok>> FakeDomainService::give_consent(UserContext user) {
 }
 
 drogon::Task<Result<CheckResult>> FakeDomainService::check_text(UserContext user, std::string text) {
+  // Как в DomainServiceImpl: ссылка на запись реестра идёт первой.
+  if (verify::parse_registry_url(text).has_value()) {
+    auto number = number_by_registry_link(*snapshot_for(user.max_user_id), text);
+    if (!number) {
+      co_return number.error();
+    }
+    co_return check_all(user.max_user_id, {std::move(number).value()});
+  }
   const auto raws = fake::find_numbers(text, kMaxNumbersPerMessage);
   if (raws.empty()) {
     co_return Error{ErrorCode::kNumberNotRecognized, "В сообщении не найден номер документа"};
@@ -98,7 +108,8 @@ drogon::Task<Result<Page<PortfolioItem>>> FakeDomainService::list_portfolio(User
 
 Result<AddResult> FakeDomainService::add_locked(std::int64_t owner, AddRequest request) {
   const auto snap = snapshot_locked(owner);
-  auto verdict = fake::check(*snap, verify::Query{.text = request.number, .today = today_});
+  auto verdict = fake::check(
+      *snap, verify::Query{.text = request.number, .today = today_, .supplier_inn = request.supplier_inn});
   if (verdict.number.empty()) {
     return Error{ErrorCode::kNumberNotRecognized, "Не удалось распознать номер"};
   }
@@ -158,6 +169,24 @@ drogon::Task<Result<CheckResult>> FakeDomainService::confirm(UserContext user, s
     }
   }
   co_return Error{ErrorCode::kNotFound, "подсказка устарела"};
+}
+
+drogon::Task<Result<ImportReport>> FakeDomainService::import_portfolio(UserContext user, std::string csv) {
+  auto parsed = parse_import_csv(csv);
+  if (!parsed) {
+    co_return parsed.error();
+  }
+  const std::scoped_lock lock(mutex_);
+  ImportReport report;
+  report.total = parsed.value().rows.size() + parsed.value().invalid.size();
+  report.invalid = std::move(parsed.value().invalid);
+  for (const auto& row : parsed.value().rows) {
+    if (auto fatal = account_import_row(report, row, add_locked(user.max_user_id, import_request(row)))) {
+      co_return *fatal;
+    }
+  }
+  finish_import_report(report);
+  co_return report;
 }
 
 drogon::Task<Result<BatchAddResult>> FakeDomainService::add_batch(UserContext user, std::int64_t batch_id) {

@@ -4,6 +4,8 @@
 #include <drogon/orm/DbClient.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -55,7 +57,8 @@ class PgEnv : public ::testing::Test {
          .status = snapshot::Status::kActive,
          .expiry_date = year{2031} / month{2} / day{9},
          .applicant_name = "ООО «ТЕСТ»",
-         .applicant_inn = "7700000016"},
+         .applicant_inn = "7700000016",
+         .registry_id = 21950326},
         {.number = "RUC-RU.AЯ46.B.10005/24", .status = snapshot::Status::kTerminated},
         {.number = "RUD-RU.PA01.B.10001/25", .status = snapshot::Status::kActive},
     };
@@ -259,6 +262,56 @@ TEST_F(DomainPgTest, FuzzyNumberConfirmed) {
   EXPECT_EQ(run(svc->confirm(bob, question.check_id)).error().code, ErrorCode::kNotFound);
   EXPECT_EQ(run(svc->confirm(alice, exact.check_id)).error().code, ErrorCode::kNotFound);
   EXPECT_EQ(run(svc->confirm(alice, 0)).error().code, ErrorCode::kNotFound);
+}
+
+// F10: текст QR выписки — ссылка на запись реестра → проверка документа по ID записи, строка в журнале.
+TEST_F(DomainPgTest, RegistryLinkFromQr) {
+  const auto r = run(svc->check_text(alice, "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common"));
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  const auto& v = r.value().verdicts.at(0);
+  EXPECT_EQ(v.verdict.number, "RUD-CR.PA08.B.89369/26");
+  EXPECT_EQ(v.verdict.level, verify::Level::kOk);
+  EXPECT_GT(v.check_id, 0);
+  ASSERT_TRUE(run(svc->add_checked(alice, v.check_id)));  // «На контроль» из карточки по QR
+  const auto missing = run(svc->check_text(alice, "https://pub.fsa.gov.ru/rds/declaration/view/1/common"));
+  ASSERT_FALSE(missing.has_value());
+  EXPECT_EQ(missing.error().code, ErrorCode::kNotFoundInSnapshot);
+}
+
+// F8 через домен: ИНН поставщика из запроса попадает в сверку, запись всё равно ставится на контроль.
+TEST_F(DomainPgTest, SupplierMismatchOnAdd) {
+  const auto r = run(svc->add_to_portfolio(
+      alice, AddRequest{.number = "RU D-CR.PA08.B.89369/26", .supplier_inn = "7700000023"}));
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  EXPECT_EQ(r.value().verdict.level, verify::Level::kWarning);
+  EXPECT_TRUE(std::ranges::any_of(r.value().verdict.findings,
+                                  [](const verify::Finding& f) { return f.rule == "supplier.mismatch"; }));
+  EXPECT_EQ(r.value().item.supplier_inn, "7700000023");
+}
+
+// F9, критерий приёмки АРХ §2: 500 строк импорта ≤ 10 с, отчёт по ненайденным; повтор — «уже на контроле».
+TEST_F(DomainPgTest, Import500RowsUnder10s) {
+  std::string csv = "SKU;Номер;ИНН поставщика\n";
+  for (int i = 0; i < 500; ++i) {
+    const auto* number = i % 50 == 0 ? "RU D-XX.0000.A.99999/26" : "RU D-CR.PA08.B.89369/26";
+    csv += "SKU-" + std::to_string(i) + ";" + number + ";" + (i % 100 == 1 ? "7700000023" : "") + "\n";
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto r = run(svc->import_portfolio(alice, csv));
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  ASSERT_TRUE(r.has_value()) << r.error().detail;
+  EXPECT_LT(elapsed, std::chrono::seconds{10});
+  EXPECT_EQ(r.value().total, 500U);
+  EXPECT_EQ(r.value().added, 500U);
+  EXPECT_EQ(r.value().not_found.size(), 10U);
+  EXPECT_EQ(r.value().supplier_mismatch.size(), 5U);
+  EXPECT_TRUE(r.value().invalid.empty());
+  EXPECT_EQ(run(svc->me(alice)).value().portfolio_count, 500U);
+  const auto again = run(svc->import_portfolio(alice, csv));
+  ASSERT_TRUE(again.has_value());
+  EXPECT_EQ(again.value().already, 500U);
+  // Чужой портфель импорт не трогает.
+  EXPECT_EQ(run(svc->me(bob)).value().portfolio_count, 0U);
 }
 
 TEST_F(DomainPgTest, AddFromChecksAndBatch) {

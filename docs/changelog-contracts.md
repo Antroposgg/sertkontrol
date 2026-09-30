@@ -5,6 +5,10 @@
 
 | Дата | Контракт | Изменение | Причина | Этап |
 |---|---|---|---|---|
+| 2026-09-29 | C6, C7 | C6: `DomainService::import_portfolio(user, csv)` → `ImportReport` (`total`, `added`, `already`, `not_found`, `supplier_mismatch`, `invalid`); fake — тот же разбор. C7 `openapi.yaml` 1.5.0: `POST /portfolio/import` (`text/csv`, ≤ 1 МБ и 1000 строк) → 200 `ImportReport`, 413, 415, 422 | F9: импорт CSV (АРХ §8 `POST /portfolio/import`, docs/plan.md §8) | 4 |
+| 2026-09-29 | C4 | `verify::Query::supplier_inn` (необязательный); правила `supplier.match`, `supplier.mismatch`, `supplier.unknown` (расчёт) и `advice.check_supplier` (рекомендация); несовпадение поднимает `ok` → `warning`; fake — упрощённый `supplier.mismatch` | F8: сверка «заявитель = поставщик» (docs/plan.md §8) | 4 |
+| 2026-09-29 | C7 | `openapi.yaml` 1.4.0: `GET /check?number=` принимает ссылку на запись реестра (текст QR), нет записи — `404 not_found_in_snapshot`; в демо-снапшоте ссылка карточки — всегда страница поиска реестра | F10 (docs/plan.md §8) | 4 |
+| 2026-09-29 | C2 | `Snapshot::by_registry_id(id)` → индекс записи; ридер — ленивый отсортированный индекс в памяти (формат файла тот же), `FakeSnapshot` — проход | F10: QR выписки несёт ID записи реестра, а не номер (docs/plan.md §8) | 4 |
 | 2026-09-29 | C7, общие | `openapi.yaml` 1.3.0: `POST /me/consent` (204); операции с данными пользователя отвечают `403 consent_required` без согласия; `cursor`/`id` — до 18 цифр; `supplier_inn` — 10 или 12 цифр. `sk::ErrorCode::kConsentRequired` ↔ web `ProblemCode 'consent_required'` | Согласие на обработку данных (АРХ §10) в мини-приложении, не только в боте; находки schemathesis | 3 |
 | 2026-09-29 | C7 | `openapi.yaml` 1.2.0: описания тегов, link `POST /portfolio` → `DELETE /portfolio/{id}`; ответы 405 несут `Allow` (RFC 9110) | Линтер @redocly/cli и контрактные тесты schemathesis (АРХ §10) | 3 |
 | 2026-09-29 | C6 | `DomainService::confirm(user, check_id)` → `CheckResult` | «Это номер …?» → «Да» (АРХ §4, поток A, шаг 6); кнопки `y:`/`n:` уже в C9 | 3 |

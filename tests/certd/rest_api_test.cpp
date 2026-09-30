@@ -257,6 +257,46 @@ TEST_F(RestApiTest, ForeignItemIsNotFound) {
   EXPECT_EQ(body(drogon::sync_wait(api.list_portfolio(as(kAlice))))["items"].size(), 1U);
 }
 
+// F9: импорт CSV — отчёт по строкам; повтор того же файла — «уже на контроле»; не CSV — 415; пусто — 422.
+TEST_F(RestApiTest, ImportCsv) {
+  const auto csv_request = [](const std::string& body, const std::string& type) {
+    auto req = as(kAlice, drogon::Post);
+    req->addHeader("Content-Type", type);
+    req->setBody(body);
+    return req;
+  };
+  const std::string csv =
+      "SKU;Номер;ИНН поставщика\n"
+      "ЧАЙ-01;RU D-CR.PA08.B.89369/26;7700000016\n"
+      "ЧАЙ-02;RU D-CR.PA08.B.89369/26;7700000023\n"
+      "ЧАЙ-03;RU D-XX.0000.A.99999/26;\n"
+      "ЧАЙ-04;привет;\n"
+      "ЧАЙ-05;RU D-CR.PA08.B.89369/26;123\n";
+  const auto resp = drogon::sync_wait(api.import_portfolio(csv_request(csv, "text/csv; charset=utf-8")));
+  ASSERT_EQ(resp->getStatusCode(), drogon::k200OK) << resp->body();
+  const auto r = body(resp);
+  EXPECT_EQ(r["total"].asUInt(), 5U);
+  EXPECT_EQ(r["added"].asUInt(), 3U);
+  EXPECT_EQ(r["already"].asUInt(), 0U);
+  ASSERT_EQ(r["not_found"].size(), 1U);
+  EXPECT_EQ(r["not_found"][0]["line"].asUInt(), 4U);
+  ASSERT_EQ(r["supplier_mismatch"].size(), 1U);
+  EXPECT_EQ(r["supplier_mismatch"][0]["line"].asUInt(), 3U);
+  EXPECT_EQ(r["supplier_mismatch"][0]["display_number"].asString(), "RU Д-CR.PA08.B.89369/26");
+  ASSERT_EQ(r["invalid"].size(), 2U);
+  EXPECT_EQ(r["invalid"][0]["line"].asUInt(), 5U);  // разбор и постановка — в одном порядке строк
+  EXPECT_EQ(r["invalid"][1]["line"].asUInt(), 6U);
+
+  const auto again = body(drogon::sync_wait(api.import_portfolio(csv_request(csv, "text/csv"))));
+  EXPECT_EQ(again["added"].asUInt(), 0U);
+  EXPECT_EQ(again["already"].asUInt(), 3U);
+
+  expect_problem(drogon::sync_wait(api.import_portfolio(csv_request(csv, "application/json"))), 415,
+                 "unsupported_media_type");
+  expect_problem(drogon::sync_wait(api.import_portfolio(csv_request("", "text/csv"))), 422,
+                 "number_not_recognized");
+}
+
 TEST_F(RestApiTest, AddValidatesBody) {
   auto no_json = as(kAlice, drogon::Post);
   no_json->setBody("number=1");
@@ -381,11 +421,13 @@ TEST(AllowHeader, MethodsOfMatchingRoutes) {
   const std::vector<Route> routes{{.pattern = "/api/v1/portfolio", .method = drogon::Get},
                                   {.pattern = "/api/v1/portfolio", .method = drogon::Post},
                                   {.pattern = "/api/v1/portfolio/{1}", .method = drogon::Delete},
+                                  {.pattern = "/api/v1/portfolio/import", .method = drogon::Post},
                                   {.pattern = "/healthz", .method = drogon::Get},
                                   {.pattern = "/healthz", .method = drogon::Get}};
   EXPECT_EQ(allowed_methods("/api/v1/portfolio", routes), "GET, POST");
   EXPECT_EQ(allowed_methods("/api/v1/portfolio/", routes), "GET, POST");
   EXPECT_EQ(allowed_methods("/api/v1/portfolio/17", routes), "DELETE");
+  EXPECT_EQ(allowed_methods("/api/v1/portfolio/import", routes), "POST");  // статичный путь важнее шаблона
   EXPECT_EQ(allowed_methods("/healthz", routes), "GET");
   EXPECT_EQ(allowed_methods("/api/v1/portfolio/17/x", routes), "");
   EXPECT_EQ(allowed_methods("/nope", routes), "");

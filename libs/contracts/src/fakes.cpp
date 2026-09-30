@@ -194,6 +194,18 @@ std::vector<std::uint32_t> FakeSnapshot::by_serial(std::string_view serial, std:
   return out;
 }
 
+std::optional<std::uint32_t> FakeSnapshot::by_registry_id(std::uint64_t registry_id) const {
+  if (registry_id == 0) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0; i < records_.size(); ++i) {
+    if (records_[i].registry_id == registry_id) {
+      return static_cast<std::uint32_t>(i);
+    }
+  }
+  return std::nullopt;
+}
+
 verify::Verdict check(const snapshot::Snapshot& snap, const verify::Query& query) {
   using verify::Basis;
   using verify::Level;
@@ -240,6 +252,14 @@ verify::Verdict check(const snapshot::Snapshot& snap, const verify::Query& query
     if (v.level == Level::kProblem) {
       v.findings.push_back(
           {Basis::kRecommendation, "advice.request_new", "Запросите у поставщика действующий документ"});
+    }
+    // F8 в упрощённом виде: несовпадение ИНН заявителя и поставщика — предупреждение.
+    if (query.supplier_inn && !query.supplier_inn->empty() && !rec.applicant_inn.empty() &&
+        rec.applicant_inn != *query.supplier_inn) {
+      v.findings.push_back({Basis::kCalculation, "supplier.mismatch", "Документ оформлен не на поставщика"});
+      if (v.level == Level::kOk) {
+        v.level = Level::kWarning;
+      }
     }
     v.card = std::move(card);
     return v;

@@ -266,6 +266,34 @@ Json::Value to_json(const DocumentHistory& h) {
   return j;
 }
 
+Json::Value to_json(const ImportReport& r) {
+  const auto lines = [](const std::vector<ImportedLine>& in) {
+    Json::Value a{Json::arrayValue};
+    for (const auto& l : in) {
+      Json::Value j{Json::objectValue};
+      j["line"] = static_cast<Json::UInt64>(l.line);
+      j["number"] = l.number;
+      j["display_number"] = verify::display_number(l.number);
+      a.append(j);
+    }
+    return a;
+  };
+  Json::Value j{Json::objectValue};
+  j["total"] = static_cast<Json::UInt64>(r.total);
+  j["added"] = static_cast<Json::UInt64>(r.added);
+  j["already"] = static_cast<Json::UInt64>(r.already);
+  j["not_found"] = lines(r.not_found);
+  j["supplier_mismatch"] = lines(r.supplier_mismatch);
+  j["invalid"] = Json::Value{Json::arrayValue};
+  for (const auto& i : r.invalid) {
+    Json::Value ji{Json::objectValue};
+    ji["line"] = static_cast<Json::UInt64>(i.line);
+    ji["reason"] = i.reason;
+    j["invalid"].append(ji);
+  }
+  return j;
+}
+
 Json::Value to_json(const DemoUpdate& u) {
   Json::Value j{Json::objectValue};
   j["notified"] = static_cast<Json::UInt64>(u.notified);

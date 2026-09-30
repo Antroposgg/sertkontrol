@@ -55,6 +55,15 @@ describe('createApiClient', () => {
     expect(fetchImpl.mock.calls[0]?.[1]?.method).toBe('DELETE');
   });
 
+  it('POST текста с заданным типом (CSV импорта)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('{"added":1}', { status: 200 }));
+    const api = createApiClient({ getInitData: () => 'i', fetchImpl });
+    await expect(api.postText('/portfolio/import', 'a;b\n', 'text/csv; charset=utf-8')).resolves.toEqual({ added: 1 });
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(init?.body).toBe('a;b\n');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('text/csv; charset=utf-8');
+  });
+
   it('POST без тела и ответа', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     const api = createApiClient({ getInitData: () => 'i', fetchImpl });

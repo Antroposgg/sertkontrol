@@ -14,6 +14,7 @@ function fakeClient(): ApiClient & { calls: unknown[][] } {
     get: vi.fn(record),
     post: vi.fn(record),
     postForm: vi.fn(record),
+    postText: vi.fn(record),
     postEmpty: vi.fn((...args: unknown[]) => {
       calls.push(args);
       return Promise.resolve();
@@ -68,3 +69,12 @@ describe('consent', () => {
     expect(c.calls).toEqual([['/me/consent']]);
   });
 });
+
+describe('importPortfolio', () => {
+  it('POST /portfolio/import с text/csv', async () => {
+    const c = fakeClient();
+    await createSertkontrolApi(c).importPortfolio('a;b\n');
+    expect(c.calls).toEqual([['/portfolio/import', 'a;b\n', 'text/csv; charset=utf-8']]);
+  });
+});
+

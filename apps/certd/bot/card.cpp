@@ -270,6 +270,10 @@ OutgoingMessage error_message(std::int64_t user, const Error& error) {
           "Не нашёл номер документа. Пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку из "
           "реестра.";
       break;
+    case ErrorCode::kNotFoundInSnapshot:
+      // Ссылка на реестр (QR выписки), а записи с таким ID нет в данных: detail называет дату данных.
+      text = "Записи реестра по этой ссылке нет в данных — пришлите номер документа, проверю его по номеру.";
+      break;
     case ErrorCode::kUnsupportedMediaType:
       text = "Пока принимаю PDF-выписки и номера текстом. Фото и сканы — в следующих версиях.";
       break;
@@ -303,11 +307,22 @@ OutgoingMessage ask_supplier_inn(std::int64_t user) {
 }
 
 OutgoingMessage supplier_attached(std::int64_t user, const AddResult& added, const CardOptions& options) {
+  std::string text = "🔔 <b>" + html_escape(verify::display_number(added.item.doc_key)) +
+                     "</b> на контроле, поставщик — ИНН " +
+                     html_escape(added.item.supplier_inn.value_or("")) +
+                     ". Сообщу, если статус в реестре изменится.";
+  // Сверка «заявитель = поставщик» (F8): результат и, при несовпадении, что делать.
+  for (const auto& f : added.verdict.findings) {
+    if (f.rule == "supplier.mismatch") {
+      text += "\n\n⚠️ " + html_escape(f.text);
+    } else if (f.rule == "supplier.match") {
+      text += "\n\n✅ " + html_escape(f.text);
+    } else if (f.rule == "supplier.unknown" || f.rule == "advice.check_supplier") {
+      text += "\n" + html_escape(f.text);
+    }
+  }
   OutgoingMessage m{.max_user_id = user,
-                    .text = "🔔 <b>" + html_escape(verify::display_number(added.item.doc_key)) +
-                            "</b> на контроле, поставщик — ИНН " +
-                            html_escape(added.item.supplier_inn.value_or("")) +
-                            ". Сообщу, если статус в реестре изменится.",
+                    .text = std::move(text),
                     .kind = MessageKind::kReply,
                     .is_demo = added.verdict.is_demo};
   std::vector<Button> row{{.text = "Снять с контроля", .payload = "d:" + std::to_string(added.item.id)}};

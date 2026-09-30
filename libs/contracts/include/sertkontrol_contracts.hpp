@@ -278,6 +278,10 @@ class Snapshot {
   /// Индексы записей с данной серийной частью и годом — кандидаты нечёткого поиска.
   [[nodiscard]] virtual std::vector<std::uint32_t> by_serial(std::string_view serial,
                                                              std::uint8_t year) const = 0;
+  /// Индекс записи с данным ID реестра ФСА (`RecordView::registry_id`): QR выписки несёт ссылку с этим ID, а
+  /// не номер (docs/plan.md §8.1). `nullopt` — нет такой записи или `registry_id == 0`; при повторе ID —
+  /// меньший индекс.
+  [[nodiscard]] virtual std::optional<std::uint32_t> by_registry_id(std::uint64_t registry_id) const = 0;
 };
 
 /// Разделяемый указатель на снапшот; `munmap` — в деструкторе последнего владельца.
@@ -358,6 +362,9 @@ struct Verdict {
 struct Query {
   std::string text{};  ///< Сырая строка номера.
   Date today{};  ///< «Сегодня» для расчётных правил сроков (инъекция для тестов).
+  /// ИНН поставщика, если пользователь его указал: сверка «заявитель = поставщик» (F8, правила `supplier.*`).
+  /// Пустая строка — как `nullopt`.
+  std::optional<std::string> supplier_inn{};
 };
 
 /// Проверка одного номера по снапшоту. Чистая функция: не делает IO.

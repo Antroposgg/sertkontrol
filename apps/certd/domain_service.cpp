@@ -12,6 +12,8 @@
 #include <json/value.h>
 #include <json/writer.h>
 
+#include "import_report.hpp"
+#include "registry_link.hpp"
 #include "sertkontrol/snapshot/lookup.hpp"
 #include "sertkontrol/verify/inn.hpp"
 
@@ -231,11 +233,30 @@ drogon::Task<Result<CheckResult>> DomainServiceImpl::check_text(UserContext user
   if (!limiter_.try_acquire(user.max_user_id)) {
     co_return Error{ErrorCode::kRateLimited, "не больше 30 проверок в минуту, попробуйте чуть позже"};
   }
-  auto raws = canon::find_numbers(text, kMaxNumbersPerMessage);
-  if (raws.empty()) {
-    co_return Error{
-        ErrorCode::kNumberNotRecognized,
-        "не нашёл номер документа: пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку"};
+  // Ссылка на запись реестра (QR выписки, F10) точнее номера из текста и идёт первой: в самой ссылке
+  // грамматика номера может найти ложный «номер» (docs/plan.md §8.2 п.2).
+  std::vector<std::string> raws;
+  if (verify::parse_registry_url(text).has_value()) {
+    const auto u = co_await ensure_user(user.max_user_id);
+    if (!u) {
+      co_return u.error();
+    }
+    const auto snap = snapshot_of(u.value());
+    if (!snap) {
+      co_return no_snapshot();
+    }
+    auto number = number_by_registry_link(*snap, text);
+    if (!number) {
+      co_return number.error();
+    }
+    raws.push_back(std::move(number).value());
+  } else {
+    raws = canon::find_numbers(text, kMaxNumbersPerMessage);
+    if (raws.empty()) {
+      co_return Error{
+          ErrorCode::kNumberNotRecognized,
+          "не нашёл номер документа: пришлите номер вида «ЕАЭС N RU Д-RU.РА01.В.12345/23» или PDF-выписку"};
+    }
   }
   co_return co_await check_numbers(user, std::move(raws), started, false);
 }
@@ -309,7 +330,8 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::add_for_user(UserRow user, Ad
   if (!snap) {
     co_return no_snapshot();
   }
-  auto verdict = verify::check(*snap, verify::Query{.text = request.number, .today = today_()});
+  auto verdict = verify::check(
+      *snap, verify::Query{.text = request.number, .today = today_(), .supplier_inn = request.supplier_inn});
   if (verdict.number.empty()) {
     co_return Error{ErrorCode::kNumberNotRecognized, "не удалось распознать номер документа"};
   }
@@ -448,6 +470,34 @@ drogon::Task<Result<AddResult>> DomainServiceImpl::attach_supplier(UserContext u
   }
   co_return co_await add_for_user(
       u.value(), AddRequest{.number = std::move(doc_key), .supplier_inn = std::move(supplier_inn)}, true);
+}
+
+drogon::Task<Result<ImportReport>> DomainServiceImpl::import_portfolio(UserContext user, std::string csv) {
+  // Один запрос к лимиту на весь файл: построчный учёт упёр бы импорт 500 строк в 30 проверок в минуту (АРХ
+  // §10).
+  if (!limiter_.try_acquire(user.max_user_id)) {
+    co_return Error{ErrorCode::kRateLimited, "не больше 30 проверок в минуту, попробуйте чуть позже"};
+  }
+  auto parsed = parse_import_csv(csv);
+  if (!parsed) {
+    co_return parsed.error();
+  }
+  const auto u = co_await ensure_user(user.max_user_id);
+  if (!u) {
+    co_return u.error();
+  }
+  ImportReport report;
+  report.total = parsed.value().rows.size() + parsed.value().invalid.size();
+  report.invalid = std::move(parsed.value().invalid);
+  for (const auto& row : parsed.value().rows) {
+    auto request = import_request(row);
+    const auto added = co_await add_for_user(u.value(), std::move(request), false);
+    if (auto fatal = account_import_row(report, row, added)) {
+      co_return *fatal;
+    }
+  }
+  finish_import_report(report);
+  co_return report;
 }
 
 drogon::Task<Result<BatchAddResult>> DomainServiceImpl::add_batch(UserContext user, std::int64_t batch_id) {

@@ -22,6 +22,8 @@ export interface ApiClient {
   post<T>(path: string, body: unknown): Promise<T>;
   /** POST `multipart/form-data` (граница выставляет браузер). */
   postForm<T>(path: string, form: FormData): Promise<T>;
+  /** POST текста с заданным типом (например, `text/csv` для импорта, F9); ответ — JSON. */
+  postText<T>(path: string, text: string, contentType: string): Promise<T>;
   /** POST без тела запроса и ответа (`204`). */
   postEmpty(path: string): Promise<void>;
   del(path: string): Promise<void>;
@@ -32,7 +34,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   const baseUrl = options.baseUrl ?? '/api/v1';
   const doFetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
 
-  async function request(method: string, path: string, body?: unknown): Promise<Response> {
+  async function request(method: string, path: string, body?: unknown, contentType?: string): Promise<Response> {
     const headers = new Headers({ Accept: 'application/json' });
     const initData = options.getInitData();
     if (initData !== undefined) {
@@ -40,6 +42,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     }
     const init: RequestInit = { method, headers };
     if (body instanceof FormData) {
+      init.body = body;
+    } else if (typeof body === 'string' && contentType !== undefined) {
+      headers.set('Content-Type', contentType);
       init.body = body;
     } else if (body !== undefined) {
       headers.set('Content-Type', 'application/json');
@@ -78,6 +83,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     },
     async postForm<T>(path: string, form: FormData): Promise<T> {
       return (await (await request('POST', path, form)).json()) as T;
+    },
+    async postText<T>(path: string, text: string, contentType: string): Promise<T> {
+      return (await (await request('POST', path, text, contentType)).json()) as T;
     },
     async postEmpty(path: string): Promise<void> {
       await request('POST', path);

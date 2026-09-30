@@ -3,7 +3,7 @@
 Сертконтроль — бот и мини-приложение MAX для проверки и мониторинга сертификатов и деклараций о соответствии.
 Модульный монолит на C++20 (`certd` + `ingest`), PostgreSQL 16, мини-приложение на React + TS.
 
-**Текущий этап: 3 — нечёткий поиск и надёжность (ветка `stage-3`; ворота пройдены — docs/plan.md §7.4; ожидает команды на этап 4).** План и статус — [`docs/plan.md`](docs/plan.md).
+**Текущий этап: 4 — Should (ветка `stage-4`): F10, F8, F9 готовы, ворота пройдены — docs/plan.md §8.4; F7 (OCR фото) — по команде.** План и статус — [`docs/plan.md`](docs/plan.md).
 
 Источники истины (читать перед любой работой):
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — АРХ: стек, структура, контракты C1–C9, алгоритмы, CI;
@@ -25,11 +25,11 @@
 | `apps/ingest` | R1 | Сборка снапшотов, diff, NOTIFY; C3 | этап 2 ✔ (`--demo` N/N+1, `--daemon`; `--once` — после подтверждения данных) | [→](apps/ingest/README.md) |
 | `apps/certd` | R3 | Домен (C6), REST, webhook, outbox, `LISTEN`, задачи, уведомления, `/healthz`, статика | этап 3 ✔ (согласие в REST, `confirm`, строгие параметры, 405 + `Allow`) | [→](apps/certd/README.md) |
 | `apps/certd/bot` | R4 | Диалоги бота, рендер уведомлений | этап 3 ✔ («Это номер …?», «Подробнее» → «Документ») | [→](apps/certd/bot/README.md) |
-| `web/` | R4 | Мини-приложение | этап 3 ✔ (Портфель, Документ, Добавить, Данные, согласие; Импорт CSV — 4) | [→](web/README.md) |
+| `web/` | R4 | Мини-приложение | этап 4 (Портфель, Документ, Добавить + сканер QR и ИНН поставщика, Импорт CSV, Данные, согласие) | [→](web/README.md) |
 | `db/` | R3 (C8 — R1) | Миграции PostgreSQL, мигратор | этап 2 ✔ (`0003`) | [→](db/README.md) |
 | `data/demo/` | R1 | Демо-источники N и N+1 | этап 2 ✔ | [→](data/demo/README.md) |
 | `tests/` | все | Модульные, property, PG, TSan (`tests/concurrency`), сценарий жюри | этап 3 ✔ | [→](tests/README.md) |
-| `fuzz/` | все | 7 целей libFuzzer + корпуса | этап 3 ✔ | [→](fuzz/README.md) |
+| `fuzz/` | все | 9 целей libFuzzer + корпуса | этап 4 (`fuzz_registry_url`, `fuzz_import_csv`) | [→](fuzz/README.md) |
 | `bench/` | все | Google Benchmark против АРХ §2 | этап 3 ✔ | [→](bench/README.md) |
 
 Роли (АРХ §1): R1 «Данные реестра», R2 «Поиск и вердикт», R3 «Backend и распознавание», R4 «MAX и продукт».

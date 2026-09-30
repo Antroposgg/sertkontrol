@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -26,6 +27,17 @@ inline constexpr std::size_t kMaxSuggestions = 3;
 
 /// Ссылка на запись в открытом реестре Росаккредитации; при `registry_id == 0` — страница поиска реестра.
 [[nodiscard]] std::string registry_url(canon::DocKind kind, std::uint64_t registry_id);
+
+/// Запись реестра, на которую указывает ссылка.
+struct RegistryRef {
+  canon::DocKind kind{canon::DocKind::kDeclaration};
+  std::uint64_t registry_id{0};
+};
+
+/// Ищет в тексте ссылку на запись реестра Росаккредитации — `pub.fsa.gov.ru/rds/declaration/view/<id>` или
+/// `pub.fsa.gov.ru/rss/certificate/view/<id>`: так выглядит QR выписки (docs/plan.md §8.1). Схема и хвост
+/// пути любые; `nullopt` — ссылки нет или ID не число от 1 до 2^64−1.
+[[nodiscard]] std::optional<RegistryRef> parse_registry_url(std::string_view text);
 
 /// Номер в привычном виде для людей: `RUD-…` → `RU Д-…`, `RUC-…` → `RU С-…`.
 [[nodiscard]] std::string display_number(std::string_view canonical);

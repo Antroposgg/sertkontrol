@@ -1,6 +1,8 @@
 # web — мини-приложение MAX (React + TypeScript, владелец R4)
 
-**Статус:** этап 3 — согласие на обработку данных перед экранами (`ConsentGate`), «Да, проверить» для нечёткого
+**Статус:** этап 4 — сканер QR выписки на «Добавить» (F10, `openCodeReader`, только iOS и Android); поле «ИНН
+поставщика» и итог сверки с заявителем после «На контроль» (F8); экран «Импорт» — CSV → контроль и отчёт (F9).
+Этап 3 — согласие на обработку данных перед экранами (`ConsentGate`), «Да, проверить» для нечёткого
 совпадения («Это номер …?»), переход из бота «Подробнее» сразу на «Документ» (`start_param`).
 Этап 2 — экран «Документ» (карточка + история смены статусов), демо-сценарий на экране «Данные»
 («Симулировать обновление» / «Сбросить демо», F6), «Показать ещё» и «Открыть» в портфеле.
@@ -18,6 +20,7 @@
 | `src/screens/Portfolio.tsx` | «Портфель» (F4): фильтры, «Показать ещё» по `next_cursor`, «Открыть», «Снять» |
 | `src/screens/Document.tsx` | «Документ»: вердикт по текущим данным + история из `GET /history?number=` (ADR-0014), «На контроль» |
 | `src/screens/Add.tsx` | «Добавить»: номер или PDF-выписка → вердикт → «На контроль» (F1–F4) |
+| `src/screens/Import.tsx` | «Импорт» (F9): CSV «SKU; номер; ИНН» → `POST /portfolio/import`, отчёт: поставлено, уже было, нет в данных, не тот поставщик, отклонённые строки |
 | `src/screens/Data.tsx` | «Данные»: дата, версия, пометка тестовых данных; для демо — стадия N / N+1, «Симулировать обновление», «Сбросить демо» |
 | `src/format.ts` | Даты, названия статусов, строка истории `describeChange`, итог демо-обновления |
 | `src/components/VerdictCard.tsx` | Карточка вердикта с блоками «Факт / Расчёт / Рекомендация» (F3) — то же содержание, что в боте |
@@ -27,7 +30,7 @@
 | `src/api/types.ts`, `src/api/sertkontrol.ts` | Типы и вызовы C7 (`openapi.yaml`) |
 | `src/api/client.ts`, `src/api/problem.ts` | HTTP: `X-Max-Init-Data`, JSON и multipart, ошибки RFC 9457 → `ApiError` |
 | `src/api/context.ts` | `ApiContext` / `useApi` — подмена API в тестах |
-| `src/max/bridge.ts` | MAX Bridge: `initData`, `platform`, `openLink`, `start_param` → начальный экран (`getStartTarget`); безопасно вне MAX |
+| `src/max/bridge.ts` | MAX Bridge: `initData`, `platform`, `openLink`, `start_param` → начальный экран (`getStartTarget`), сканер QR (`canScanQr`, `scanQr`); безопасно вне MAX |
 | `src/test/fakeApi.ts`, `src/test/render.tsx` | Фейковый API и рендер с провайдерами для тестов |
 
 MAX Bridge подключается в `index.html` скриптом `https://st.max.ru/js/max-web-app.js` (dev.max.ru/docs/webapps/bridge).
@@ -50,7 +53,8 @@ scripts/ci/web.sh                         # lint, tsc, тесты с покры�
 
 ## Ограничения
 - Вне MAX (обычный браузер) initData нет: локально работает режим `CERTD_DEV_USER_ID` ([ADR-0013](../docs/adr/0013-dev-auth-without-max.md)).
-- `openCodeReader` (F10) и «Импорт CSV» (F9) — этап 4.
+- Сканер QR (`openCodeReader`) MAX поддерживает только на iOS и Android: в вебе и на десктопе кнопки нет, работает загрузка PDF.
+  Текст QR уходит в `GET /check` — сервер находит документ по ID записи реестра из ссылки.
 - Кнопка бота «Подробнее» передаёт `start_param = doc-<hex UTF-8 номера>` (символы и длина — в пределах ограничений
   MAX на `start_param`); неизвестный или повреждённый параметр открывает «Портфель».
 - «Документ» вызывает `GET /check` — проверка попадает в журнал и лимит 30 в минуту (АРХ §10), как и на «Добавить».

@@ -107,7 +107,7 @@ F7–F10 (Should) — этап 4 по отдельной команде. F11–F
 | 1 | Проверка документа на демо-снапшоте (F1 точный, F2, F3, F4) | ✔ завершён 2026-09-27, ворота зелёные |
 | 2 | Обновление и уведомления (F5, F6) | ✔ завершён 2026-09-28; Docker-пункт закрыт на этапе 3 (§7.4) |
 | 3 | Нечёткий поиск и надёжность | ✔ завершён 2026-09-29; ворота зелёные (§7.4), CI зелёный |
-| 4 | Should: F7–F10 | по отдельной команде |
+| 4 | Should: F10, F8, F9, затем F7 | F10, F8, F9 ✔ 2026-09-30, ворота зелёные (§8.4); F7 — по команде |
 
 ---
 
@@ -373,4 +373,71 @@ p50 135 мкс / p99 289 мкс (цель ≤ 5 мс), «нет в данных�
 | Долги этапа 2 | Согласие в мини-приложении; «Подробнее» открывает документ | `rest_api.cpp` (`authorize`, `consent`), `web/src/components/ConsentGate.tsx`, `bot/card.cpp` (`document_start_param`), `web/src/max/bridge.ts` (`getStartTarget`) | `RestApiTest.ConsentRequired`, web `ConsentGate.test.tsx`, `Card.DocumentStartParamFitsMaxLimits`, web `App.test.tsx` «Подробнее из бота открывает документ», `bridge.test.ts` |
 | Проверка в MAX | Кнопки и карточки бота доходят до пользователя; `/start` — справка; статус в заголовке карточки web | `bot_identity.cpp` (`GET /me`), `maxapi` `get_me`/`parse_bot_info`, `bot.cpp` (`split_bot_command`), `web/src/components/VerdictCard.tsx` | `BotIdentity.UsernameFromGetMe`, `HttpBotApiTest.GetMeReturnsUsername`, `BotInfo.Parse`, `BotTest.StartAndHelpCommands`, `BotTest.StartCommandWithoutConsentAsksForIt`, web `Add.test.tsx`, fuzz `fuzz_update_json` |
 | Надёжность (АРХ §10) | fuzz, TSan, контракт C7 | `fuzz/`, `tests/concurrency/`, `openapi.yaml`, `scripts/ci/contract-test.sh` | fuzz smoke 7 × 60 с, `SnapshotSwap.*`, `RateLimiterConcurrency.*`, schemathesis (все проверки) + 405/`Allow` |
+
+---
+
+## 8. Этап 4 — Should: F10, F8, F9, затем F7 (детальный план)
+
+Порядок — по отдаче и риску (команда пользователя 2026-09-29): F10 (платформенный бонус КЕЙС §5.4) → F8 → F9;
+F7 (OCR фото) — отдельным шагом после них.
+
+### 8.1. Факты MAX, сверенные с официальными источниками (29.09.2026)
+
+| Что | Факт | Источник |
+|---|---|---|
+| Сканер QR | `window.WebApp.openCodeReader(fileSelect = true)` → `Promise<string>` с содержимым кода; `fileSelect=false` — только камера | dev.max.ru/docs/webapps/bridge |
+| Поддержка | Только iOS и Android; «not supported on desktop and web clients»; платформа — `WebApp.platform` (`ios`, `android`, `desktop`, `web`) | там же |
+| QR выписки ФСА | Ссылка на запись реестра `https://pub.fsa.gov.ru/rds/declaration/view/<id>/common` (сертификаты — `/rss/certificate/view/<id>/…`), номера документа в QR нет | фикстура `extract-89369-26` (АРХ §1, спайк); формат ссылки — `docs/rules.md` |
+
+### 8.2. Решения этапа
+
+| # | Решение | Почему |
+|---|---|---|
+| 1 | F10: кнопка «Сканировать QR» на экране «Добавить» только при `platform ∈ {ios, android}` и наличии `openCodeReader`; текст QR уходит в тот же `GET /check?number=` | На вебе метод не поддержан (АРХ §2 F10: «кнопка скрыта, работает загрузка файла») |
+| 2 | Ссылка на запись реестра в тексте запроса (из QR, вставленная в бот или в «Добавить») находится по ID записи: `verify::parse_registry_url` + новый метод C2 `Snapshot::by_registry_id` | В QR выписки нет номера — только ID; открытый вопрос АРХ §11 «индекс по registry_id» |
+| 3 | `by_registry_id` в ридере — отсортированный индекс в памяти, строится один раз при первом вызове (`std::call_once`); формат файла не меняется | Бинарный поиск вместо прохода по 1 млн записей; снапшоты без обращений по ID не платят ни памятью, ни временем загрузки |
+| 4 | F8: `verify::Query::supplier_inn` (C4); правила `supplier.match` / `supplier.mismatch` / `supplier.unknown` (расчёт) и `advice.check_supplier` (рекомендация); несовпадение поднимает `ok` → `warning` | Правило вердикта — в `libs/verify` по каталогу `docs/rules.md` (CLAUDE.md «Куда добавлять»); все пути постановки с ИНН сходятся в `add_for_user` |
+| 5 | Несовпадение — не «проблема»: поставщик может законно перепродавать товар заявителя, поэтому рекомендация — запросить подтверждение цепочки поставки | Не юридическое заключение (Won't, АРХ §2) |
+| 6 | F9: `POST /portfolio/import` (`text/csv`, ≤ 1 МБ и ≤ 1000 строк, иначе 413) → `ImportReport` (АРХ §8); C6 `import_portfolio`; разбор CSV — чистая функция с fuzz-целью (АРХ §10) | Контракт C7 уже описан в АРХ; разбор CSV — входные данные пользователя |
+| 7 | CSV: колонки «SKU; номер; ИНН поставщика», разделитель `;` или `,`, кавычки по RFC 4180, BOM и заголовок пропускаются; строки добавляются тем же путём, что и одиночная постановка; не найденные в данных — тоже на контроль (как одиночная постановка) и в отчёт | Excel в русской локали сохраняет CSV через `;`; одно поведение для одного и многих документов |
+| 8 | Импорт не расходует лимит 30 проверок в минуту построчно: одна операция импорта = одно обращение к лимиту | Иначе 500 строк упирались бы в лимит АРХ §10 |
+
+### 8.3. Работы
+
+| # | Модуль | Результат | Тест |
+|---|---|---|---|
+| 4.1 | `libs/contracts`, `libs/snapshot`, `libs/verify` | `Snapshot::by_registry_id`, `parse_registry_url`, поиск по ссылке | `SnapshotTest.*`, `VerifyRegistryUrl.*`, fuzz |
+| 4.2 | `apps/certd`, `bot` | Ссылка реестра в `check_text` → карточка; сообщение «записи по ссылке нет в данных» | `DomainPgTest.*`, `BotTest.*` |
+| 4.3 | `web` | `bridge.canScanQr`, `scanQr`; кнопка на «Добавить» | `bridge.test.ts`, `Add.test.tsx` |
+| 4.4 | `libs/verify`, `docs/rules.md`, `certd` | F8: правила сверки ИНН, предупреждение в боте и web | `RulesTest.Table`, `DomainPgTest.*`, `Card.*` |
+| 4.5 | `apps/certd`, `openapi.yaml`, `web` | F9: разбор CSV, `import_portfolio`, `POST /portfolio/import`, экран «Импорт» | `CsvImport.*`, `DomainPgTest.Import500RowsUnder10s`, `RestApiTest.*`, `Import.test.tsx`, fuzz `fuzz_import_csv`, schemathesis |
+
+### 8.4. Результат ворот (F10, F8, F9; чистый клон, `scripts/gate.sh`)
+
+| # | Пункт | Результат |
+|---|---|---|
+| 1 | GCC 13 и clang 18 с `-Werror`, clang-tidy, clang-format, ESLint, tsc strict, линтер OpenAPI | 0 ошибок, 0 предупреждений |
+| 2 | Тесты ×2, ASan/UBSan, TSan | C++ 245/245 (дважды, с PostgreSQL, 0 пропущенных); web 75/75 (дважды); санитайзеры без находок |
+| 3 | Покрытие | C++ 89,7% строк (3626/4042); web 99,4% строк |
+| 4 | Шаги CI локально | все зелёные; fuzz — 9 целей × 60 с (новые `fuzz_registry_url`, `fuzz_import_csv`) без находок |
+| 5 | `docker build --no-cache` / compose | 75 с (без Tesseract, ADR-0017); compose-smoke и контрактные тесты зелёные |
+| 6 | Критерии F | таблица 8.5 |
+| 7 | Соответствие АРХ, циклы | `deps-check.sh` OK; отклонений от АРХ нет, решения — §8.2 |
+| 8 | Документация | README модулей и корневой, CLAUDE.md, `docs/rules.md`, `openapi.yaml` 1.5.0, журнал контрактов (C2, C4, C6, C7) |
+| 9 | gitleaks, авторство | утечек нет; соавторства и упоминаний ИИ нет |
+
+Бенчмарки: точный поиск p99 3,8 мкс, нечёткий p99 244 мкс, diff 68 мс на 1 млн записей.
+
+Найдено воротами: schemathesis — лимит 30 проверок в минуту общий для проверок, файлов и импорта, поэтому прогон
+одним пользователем получает 429 (задокументированный ответ добавлен в ожидаемые); тело `text/csv` описано без
+JSON-типа — «число 0» и «строка "0"» для текста неотличимы. На живом стеке `Allow` для `/portfolio/import` включал
+`DELETE` от шаблона `/portfolio/{id}` — статичный путь теперь важнее шаблона.
+
+### 8.5. F-требования этапа 4 → код → тест
+
+| F | Критерий приёмки (АРХ §2) | Код | Тест |
+|---|---|---|---|
+| F10 | Сканирование QR камерой в мини-приложении работает на телефоне; на вебе кнопка скрыта, работает загрузка файла | `web/src/max/bridge.ts` (`canScanQr`, `scanQr`), `web/src/screens/Add.tsx`; `verify::parse_registry_url`, C2 `Snapshot::by_registry_id`, `apps/certd/registry_link.cpp` | web `bridge.test.ts` «сканер QR», `Add.test.tsx` «на телефоне…», «в вебе кнопки сканера нет»; `SnapshotTest.ByRegistryId`, `VerifyText.ParseRegistryUrl`, `DomainPgTest.RegistryLinkFromQr`, `BotTest.RegistryLinkGivesCard`, fuzz `fuzz_registry_url` |
+| F8 | Несовпадение «заявитель = поставщик» → предупреждение с объяснением | `verify.cpp` (`supplier_rules`, `advice.check_supplier`), `Query::supplier_inn`, `bot/card.cpp` (`supplier_attached`), `web/src/screens/Add.tsx` | `RulesTest.SupplierRules`, `DomainPgTest.SupplierMismatchOnAdd`, `BotTest.SupplierMismatchWarns`, web `Add.test.tsx` «F8…» |
+| F9 | Импорт CSV «SKU, номер, ИНН»: 500 строк ≤ 10 с, отчёт по ненайденным | `apps/certd/csv_import.cpp`, `import_report.cpp`, `DomainServiceImpl::import_portfolio`, `POST /portfolio/import`, `web/src/screens/Import.tsx` | `DomainPgTest.Import500RowsUnder10s` (≈ 2 с), `CsvImport.*`, `RestApiTest.ImportCsv`, web `Import.test.tsx`, fuzz `fuzz_import_csv`, schemathesis |
 

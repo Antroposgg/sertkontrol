@@ -154,6 +154,60 @@ TEST_F(RulesTest, Table) {
   }
 }
 
+// F8: сверка «заявитель = поставщик». Несовпадение — предупреждение (ok → warning), «проблема» остаётся
+// проблемой.
+TEST_F(RulesTest, SupplierRules) {
+  struct Case {
+    const char* number;
+    std::optional<std::string> supplier;
+    Level level;
+    std::vector<std::string> rules;
+  };
+  const std::vector<Case> cases = {
+      {"RU D-CR.PA08.B.89369/26",
+       "7700000016",
+       Level::kOk,
+       {"status.active", "term.period", "term.remaining", "supplier.match", "advice.watch"}},
+      {"RU D-CR.PA08.B.89369/26",
+       "7700000023",
+       Level::kWarning,
+       {"status.active", "term.period", "term.remaining", "supplier.mismatch", "advice.watch",
+        "advice.check_supplier"}},
+      {"RU D-RU.PA01.B.10009/25",
+       "7700000023",
+       Level::kOk,
+       {"status.active", "term.unknown", "supplier.unknown", "advice.watch"}},
+      {"RU D-RU.PA01.B.10004/25",
+       "7700000023",
+       Level::kProblem,
+       {"status.suspended", "term.unknown", "supplier.unknown", "advice.replace"}},
+      {"RU D-CR.PA08.B.89369/26",
+       "",
+       Level::kOk,
+       {"status.active", "term.period", "term.remaining", "advice.watch"}},
+      {"RU D-CR.PA08.B.89369/26",
+       std::nullopt,
+       Level::kOk,
+       {"status.active", "term.period", "term.remaining", "advice.watch"}},
+  };
+  for (const auto& c : cases) {
+    SCOPED_TRACE(std::string{c.number} + " / " + c.supplier.value_or("—"));
+    const auto v = check(*shared_snapshot, {.text = c.number, .today = kToday, .supplier_inn = c.supplier});
+    EXPECT_EQ(v.level, c.level);
+    EXPECT_EQ(rules(v), c.rules);
+  }
+  const auto mismatch = check(
+      *shared_snapshot, {.text = "RU D-CR.PA08.B.89369/26", .today = kToday, .supplier_inn = "7700000023"});
+  const auto* found = find(mismatch, "supplier.mismatch");
+  const auto* advice = find(mismatch, "advice.check_supplier");
+  ASSERT_NE(found, nullptr);
+  ASSERT_NE(advice, nullptr);
+  EXPECT_EQ(found->text,
+            "Документ оформлен не на поставщика: заявитель — ИНН 7700000016, поставщик — ИНН 7700000023");
+  EXPECT_TRUE(found->basis == Basis::kCalculation);
+  EXPECT_TRUE(advice->basis == Basis::kRecommendation);
+}
+
 TEST_F(RulesTest, EveryFindingHasBasisMatchingCatalogPrefix) {
   for (const auto* number : {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10003/21", "RU D-RU.PA05.B.20000/25",
                              "RU D-RU.PA01.B.99999/26"}) {
@@ -181,9 +235,24 @@ TEST_F(RulesTest, CardFieldsAndRegistryLink) {
   EXPECT_EQ(c.manufacturer_name, "ТЕСТ-ЗАВОД");
   EXPECT_EQ(c.product, "Чайники");
   EXPECT_EQ(c.tnved, "8516790000");
-  EXPECT_EQ(c.registry_url, "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  // Снапшот фикстуры — демо: ссылка на страницу поиска, хотя у записи есть ID (поля демо вымышлены).
+  EXPECT_EQ(c.registry_url, "https://pub.fsa.gov.ru/rds/declaration");
   EXPECT_EQ(sk::test::checked(run("RU C-RU.AЯ46.B.10005/24").card).registry_url,
             "https://pub.fsa.gov.ru/rss/certificate");
+}
+
+// Боевой снапшот: ссылка ведёт на запись реестра по её ID.
+TEST(RegistryLink, ProdSnapshotLinksToRecord) {
+  const auto path = std::filesystem::temp_directory_path() / "sk-verify-prod-link.bin";
+  ASSERT_TRUE(snapshot::write_snapshot(
+      path, {{.number = "RUD-CR.PA08.B.89369/26", .status = Status::kActive, .registry_id = 21950326}},
+      {.version = 1, .source = "fsa", .source_date = kToday}));
+  const auto snap = snapshot::open_snapshot(path);
+  ASSERT_TRUE(snap.has_value());
+  const auto v = check(*snap.value(), {.text = "RU D-CR.PA08.B.89369/26", .today = kToday});
+  EXPECT_EQ(sk::test::checked(v.card).registry_url,
+            "https://pub.fsa.gov.ru/rds/declaration/view/21950326/common");
+  std::filesystem::remove(path);
 }
 
 TEST_F(RulesTest, TextsMentionDates) {
@@ -229,6 +298,14 @@ TEST_F(RulesTest, EveryRuleIsDocumentedInCatalog) {
                         "RU D-RU.PA05.B.20000/25", "RU D-RU.PA01.B.1000Z/25", "x"}) {
     for (const auto& f : run(n).findings) {
       used.insert(f.rule);
+    }
+  }
+  for (const auto* inn : {"7700000016", "7700000023"}) {
+    for (const auto* n : {"RU D-CR.PA08.B.89369/26", "RU D-RU.PA01.B.10009/25"}) {
+      for (const auto& f :
+           check(*shared_snapshot, {.text = n, .today = kToday, .supplier_inn = inn}).findings) {
+        used.insert(f.rule);
+      }
     }
   }
   for (const auto& r : used) {

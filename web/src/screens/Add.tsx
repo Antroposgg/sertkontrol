@@ -3,24 +3,40 @@ import { useState } from 'react';
 
 import { useApi } from '../api/context';
 import { problemMessage, type Problem } from '../api/problem';
-import type { CheckedVerdict } from '../api/types';
+import type { AddResult, CheckedVerdict } from '../api/types';
 import { StateView, type ViewState } from '../components/StateView';
 import { VerdictCard } from '../components/VerdictCard';
 import { toProblemOf } from '../hooks/useResource';
+import { canScanQr, scanQr } from '../max/bridge';
 
 type Result = ViewState<CheckedVerdict[]> | { kind: 'idle' };
 
+/** Поставлено на контроль; `notes` — итог сверки «заявитель = поставщик» (F8), если указан ИНН. */
+interface Watched {
+  done: true;
+  notes: string[];
+}
+
+/** Строки сверки с поставщиком из вердикта постановки (правила `supplier.*`, `advice.check_supplier`, docs/rules.md). */
+function supplierNotes(result: AddResult): string[] {
+  return result.verdict.findings
+    .filter((f) => f.rule.startsWith('supplier.') || f.rule === 'advice.check_supplier')
+    .map((f) => f.text);
+}
+
 /**
- * Экран «Добавить»: проверка номера или PDF-выписки (F1–F3) и постановка на контроль (F4).
- * Загрузка файла работает везде; сканер QR камерой (`openCodeReader`, F10) — этап 4.
+ * Экран «Добавить»: проверка номера, PDF-выписки или QR (F1–F3, F10) и постановка на контроль (F4).
+ * Загрузка файла работает везде; сканер QR (`openCodeReader`) — только в мобильных клиентах MAX. Текст QR — обычно
+ * ссылка на запись реестра — уходит в ту же проверку `GET /check`: сервер находит документ по ID записи.
  */
 export function Add() {
   const api = useApi();
   const [number, setNumber] = useState('');
   const [sku, setSku] = useState('');
+  const [supplierInn, setSupplierInn] = useState('');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [lastRun, setLastRun] = useState<(() => void) | null>(null);
-  const [watched, setWatched] = useState<Record<string, 'saving' | 'done' | Problem>>({});
+  const [watched, setWatched] = useState<Record<string, 'saving' | Watched | Problem>>({});
 
   const run = (task: () => Promise<CheckedVerdict[]>) => {
     const go = () => {
@@ -42,10 +58,14 @@ export function Add() {
     const key = v.number ?? v.query;
     setWatched((w) => ({ ...w, [key]: 'saving' }));
     api
-      .addToPortfolio({ number: v.number ?? v.query, ...(sku.trim() === '' ? {} : { sku: sku.trim() }) })
+      .addToPortfolio({
+        number: v.number ?? v.query,
+        ...(sku.trim() === '' ? {} : { sku: sku.trim() }),
+        ...(supplierInn.trim() === '' ? {} : { supplier_inn: supplierInn.trim() }),
+      })
       .then(
-        () => {
-          setWatched((w) => ({ ...w, [key]: 'done' }));
+        (added) => {
+          setWatched((w) => ({ ...w, [key]: { done: true, notes: supplierNotes(added) } }));
         },
         (e: unknown) => {
           setWatched((w) => ({ ...w, [key]: toProblemOf(e) }));
@@ -78,6 +98,15 @@ export function Add() {
             setSku(e.target.value);
           }}
         />
+        <Input
+          aria-label="ИНН поставщика (необязательно)"
+          placeholder="ИНН поставщика (необязательно) — сверим с заявителем"
+          inputMode="numeric"
+          value={supplierInn}
+          onChange={(e) => {
+            setSupplierInn(e.target.value);
+          }}
+        />
         <Button type="submit" disabled={number.trim() === ''}>
           Проверить
         </Button>
@@ -95,25 +124,49 @@ export function Add() {
           }}
         />
       </label>
+      {canScanQr() && (
+        <Button
+          variant="secondary"
+          onClick={() => {
+            void scanQr().then((text) => {
+              if (text !== undefined) run(() => api.check(text).then((v) => [v]));
+            });
+          }}
+        >
+          Сканировать QR с выписки
+        </Button>
+      )}
       {result.kind !== 'idle' && (
         <StateView state={result} emptyText="В файле не найдено номеров." onRetry={() => lastRun?.()}>
           {(verdicts) => (
             <>
               {verdicts.map((v) => {
                 const status = watched[v.number ?? v.query];
+                const done = typeof status === 'object' && 'done' in status ? status : undefined;
                 return (
                   <div key={v.check_id}>
                     <VerdictCard
                       verdict={v}
-                      {...(status === 'done' ? {} : { onWatch: () => { watch(v); } })}
+                      {...(done !== undefined ? {} : { onWatch: () => { watch(v); } })}
                       onConfirm={(n) => {
                         setNumber(n);
                         run(() => api.check(n).then((checked) => [checked]));
                       }}
                       watching={status === 'saving'}
                     />
-                    {status === 'done' && <p role="status">На контроле — пришлём уведомление в чат, если статус изменится.</p>}
-                    {typeof status === 'object' && <p role="alert">{problemMessage(status)}</p>}
+                    {done !== undefined && (
+                      <>
+                        <p role="status">На контроле — пришлём уведомление в чат, если статус изменится.</p>
+                        {done.notes.length > 0 && (
+                          <ul aria-label="Сверка с поставщиком">
+                            {done.notes.map((n) => (
+                              <li key={n}>{n}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                    {typeof status === 'object' && !('done' in status) && <p role="alert">{problemMessage(status)}</p>}
                   </div>
                 );
               })}

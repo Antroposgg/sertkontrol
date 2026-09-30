@@ -74,6 +74,7 @@ sk_add_test(certd_test
   certd/rest_api_test.cpp
   certd/bot_test.cpp
   certd/components_test.cpp
+  certd/csv_import_test.cpp
   LIBS sk::certd_core OpenSSL::Crypto)
 
 find_package(yaml-cpp REQUIRED)

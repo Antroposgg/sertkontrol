@@ -17,3 +17,8 @@ sk_add_fuzz(fuzz_init_data LIBS sk::maxapi)
 sk_add_fuzz(fuzz_outbox_json LIBS sk::maxapi)
 sk_add_fuzz(fuzz_demo_tsv LIBS sk::ingest_core)
 sk_add_fuzz(fuzz_weighted_distance LIBS sk::verify)
+sk_add_fuzz(fuzz_registry_url LIBS sk::verify)
+# Разбор CSV живёт в certd, но без Drogon: цель собирает только его исходник (АРХ §10 «Fuzz»: CSV-импорт).
+sk_add_fuzz(fuzz_import_csv LIBS sk::verify)
+target_sources(fuzz_import_csv PRIVATE ${PROJECT_SOURCE_DIR}/apps/certd/csv_import.cpp)
+target_include_directories(fuzz_import_csv PRIVATE ${PROJECT_SOURCE_DIR}/apps/certd)

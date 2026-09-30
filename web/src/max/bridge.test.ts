@@ -52,3 +52,35 @@ describe('start_param', () => {
     expect(getStartTarget({} as Window)).toBeUndefined();
   });
 });
+
+describe('сканер QR (F10)', () => {
+  const qr = 'https://pub.fsa.gov.ru/rds/declaration/view/21950326/common';
+
+  it('доступен только в мобильных клиентах с openCodeReader', async () => {
+    const { canScanQr } = await import('./bridge');
+    const reader = () => Promise.resolve(qr);
+    expect(canScanQr(fakeWindow({ platform: 'ios', openCodeReader: reader }))).toBe(true);
+    expect(canScanQr(fakeWindow({ platform: 'android', openCodeReader: reader }))).toBe(true);
+    expect(canScanQr(fakeWindow({ platform: 'web', openCodeReader: reader }))).toBe(false);
+    expect(canScanQr(fakeWindow({ platform: 'desktop', openCodeReader: reader }))).toBe(false);
+    expect(canScanQr(fakeWindow({ platform: 'ios' }))).toBe(false);
+    expect(canScanQr(fakeWindow())).toBe(false);
+  });
+
+  it('возвращает текст кода; отмена и пустой код — undefined', async () => {
+    const { scanQr } = await import('./bridge');
+    const calls: (boolean | undefined)[] = [];
+    const win = fakeWindow({
+      platform: 'android',
+      openCodeReader: (fileSelect) => {
+        calls.push(fileSelect);
+        return Promise.resolve(` ${qr} `);
+      },
+    });
+    expect(await scanQr(win)).toBe(qr);
+    expect(calls).toEqual([true]);
+    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.reject(new Error('cancel')) }))).toBeUndefined();
+    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.resolve('  ') }))).toBeUndefined();
+    expect(await scanQr(fakeWindow({ platform: 'web', openCodeReader: () => Promise.resolve(qr) }))).toBeUndefined();
+  });
+});

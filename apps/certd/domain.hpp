@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "csv_import.hpp"
 #include "sertkontrol_contracts.hpp"
 
 namespace sk::certd {
@@ -105,6 +106,22 @@ struct BatchAddResult {
   std::size_t already{0};  ///< Уже были на контроле.
 };
 
+/// Строка отчёта импорта: номер строки файла и каноничный номер документа.
+struct ImportedLine {
+  std::size_t line{0};
+  std::string number{};
+};
+
+/// Итог импорта CSV (F9, `POST /portfolio/import`, АРХ §8 `ImportReport`).
+struct ImportReport {
+  std::size_t total{0};  ///< Строк данных в файле (без заголовка и пустых).
+  std::size_t added{0};                   ///< Поставлено на контроль.
+  std::size_t already{0};                 ///< Уже были на контроле с тем же SKU.
+  std::vector<ImportedLine> not_found{};  ///< Поставлены, но номера нет в данных реестра.
+  std::vector<ImportedLine> supplier_mismatch{};  ///< Поставлены, но заявитель ≠ поставщик (F8).
+  std::vector<ImportIssue> invalid{};  ///< Не поставлены: причина (строки по возрастанию).
+};
+
 /// Загруженный файл. Хранится только в памяти, на диск не пишется (АРХ §6 «Хранение»).
 struct FileUpload {
   std::vector<std::byte> bytes{};
@@ -187,6 +204,10 @@ class DomainService {
 
   /// Поставить на контроль все номера из своей пачки проверок.
   virtual drogon::Task<Result<BatchAddResult>> add_batch(UserContext user, std::int64_t batch_id) = 0;
+  /// Импорт CSV «SKU; номер; ИНН поставщика» (F9): каждая строка — как `add_to_portfolio`; один запрос к
+  /// лимиту проверок на весь файл (docs/plan.md §8.2 п.8). Ошибки файла — `parse_import_csv`; строки с
+  /// ошибками — в отчёт.
+  virtual drogon::Task<Result<ImportReport>> import_portfolio(UserContext user, std::string csv) = 0;
 
   /// Указать поставщика документа из своей проверки `check_log.id`: документ без SKU ставится на контроль с
   /// поставщиком, а если уже на контроле — поставщик записывается в эту запись. ИНН проверяется по
