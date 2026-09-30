@@ -67,20 +67,35 @@ describe('сканер QR (F10)', () => {
     expect(canScanQr(fakeWindow())).toBe(false);
   });
 
-  it('возвращает текст кода; отмена и пустой код — undefined', async () => {
-    const { scanQr } = await import('./bridge');
+  it('текст кода — из строки или из объекта ответа (так на деле отвечает max-web-app.js)', async () => {
+    const { scanQr, qrTextOf } = await import('./bridge');
     const calls: (boolean | undefined)[] = [];
     const win = fakeWindow({
       platform: 'android',
       openCodeReader: (fileSelect) => {
         calls.push(fileSelect);
-        return Promise.resolve(` ${qr} `);
+        return Promise.resolve({ value: ` ${qr} ` });
       },
     });
-    expect(await scanQr(win)).toBe(qr);
+    expect(await scanQr(win)).toEqual({ kind: 'text', text: qr });
     expect(calls).toEqual([true]);
-    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.reject(new Error('cancel')) }))).toBeUndefined();
-    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.resolve('  ') }))).toBeUndefined();
-    expect(await scanQr(fakeWindow({ platform: 'web', openCodeReader: () => Promise.resolve(qr) }))).toBeUndefined();
+    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.resolve(qr) }))).toEqual({ kind: 'text', text: qr });
+    expect(qrTextOf({ status: 'ok', result: qr, count: 1 })).toBe(qr);
+    expect(qrTextOf({})).toBeUndefined();
+    expect(qrTextOf(42)).toBeUndefined();
+    expect(qrTextOf(null)).toBeUndefined();
+  });
+
+  it('закрытие сканера и ответ без текста — видимый итог, а не тишина', async () => {
+    const { scanQr } = await import('./bridge');
+    expect(
+      await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.reject(Object.assign(new Error('cancel'), { error: { code: 'client.open_code_reader.cancelled' } })) })),
+    ).toEqual({ kind: 'cancelled', code: 'client.open_code_reader.cancelled' });
+    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.reject(new Error('x')) }))).toEqual({ kind: 'cancelled' });
+    expect(await scanQr(fakeWindow({ platform: 'ios', openCodeReader: () => Promise.resolve({ ok: true }) }))).toEqual({
+      kind: 'failed',
+      detail: 'ответ сканера без текста кода: {"ok":true}',
+    });
+    expect((await scanQr(fakeWindow({ platform: 'web', openCodeReader: () => Promise.resolve(qr) }))).kind).toBe('failed');
   });
 });

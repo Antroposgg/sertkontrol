@@ -36,6 +36,7 @@ export function Add() {
   const [supplierInn, setSupplierInn] = useState('');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [lastRun, setLastRun] = useState<(() => void) | null>(null);
+  const [scanNote, setScanNote] = useState<string | null>(null);
   const [watched, setWatched] = useState<Record<string, 'saving' | Watched | Problem>>({});
 
   const run = (task: () => Promise<CheckedVerdict[]>) => {
@@ -128,14 +129,22 @@ export function Add() {
         <Button
           variant="secondary"
           onClick={() => {
-            void scanQr().then((text) => {
-              if (text !== undefined) run(() => api.check(text).then((v) => [v]));
+            setScanNote(null);
+            void scanQr().then((scan) => {
+              if (scan.kind === 'text') {
+                run(() => api.check(scan.text).then((v) => [v]));
+              } else if (scan.kind === 'cancelled') {
+                setScanNote(`Сканер закрыт без результата${scan.code === undefined ? '' : ` (${scan.code})`}.`);
+              } else {
+                setScanNote(`Не получилось прочитать QR: ${scan.detail}.`);
+              }
             });
           }}
         >
           Сканировать QR с выписки
         </Button>
       )}
+      {scanNote !== null && <p role="status">{scanNote}</p>}
       {result.kind !== 'idle' && (
         <StateView state={result} emptyText="В файле не найдено номеров." onRetry={() => lastRun?.()}>
           {(verdicts) => (

@@ -17,10 +17,12 @@ export interface MaxWebApp {
   /** Открыть внешнюю ссылку средствами MAX (dev.max.ru/docs/webapps/bridge). */
   openLink?: (url: string) => void;
   /**
-   * Сканер QR (dev.max.ru/docs/webapps/bridge): `fileSelect=true` — камера или файл из галереи; результат —
-   * содержимое кода. Только iOS и Android: «not supported on desktop and web clients».
+   * Сканер QR (dev.max.ru/docs/webapps/bridge): `fileSelect=true` — камера или файл из галереи. Только iOS и Android:
+   * «not supported on desktop and web clients». Документация обещает строку, но скрипт `max-web-app.js` разрешает
+   * промис объектом — полезной нагрузкой ответа приложения MAX (`requestController.handleResponse`), поэтому тип
+   * результата — `unknown`, а текст кода извлекает `qrTextOf`.
    */
-  openCodeReader?: (fileSelect?: boolean) => Promise<string>;
+  openCodeReader?: (fileSelect?: boolean) => Promise<unknown>;
 }
 
 declare global {
@@ -105,20 +107,66 @@ export function canScanQr(win: Window = window): boolean {
   return (app?.platform === 'ios' || app?.platform === 'android') && typeof app.openCodeReader === 'function';
 }
 
+/** Итог сканирования: текст кода, закрытие без результата или ответ, в котором нет текста. */
+export type ScanResult = { kind: 'text'; text: string } | { kind: 'cancelled'; code?: string } | { kind: 'failed'; detail: string };
+
 /**
- * Открывает сканер QR MAX. Возвращает содержимое кода или `undefined`, если сканер недоступен или закрыт без
- * результата: документация MAX не описывает ошибки промиса, поэтому любой отказ считается отменой.
+ * Текст QR из ответа сканера: строка как есть или непустое строковое значение объекта ответа (самое длинное — если их
+ * несколько). Имя поля в документации MAX не описано, поэтому оно не угадывается.
+ */
+export function qrTextOf(result: unknown): string | undefined {
+  if (typeof result === 'string') {
+    const text = result.trim();
+    return text === '' ? undefined : text;
+  }
+  if (typeof result !== 'object' || result === null) {
+    return undefined;
+  }
+  let best: string | undefined;
+  for (const value of Object.values(result)) {
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (text !== '' && (best === undefined || text.length > best.length)) best = text;
+    }
+  }
+  return best;
+}
+
+/** Код ошибки из отказа MAX Bridge: `{ error: { code } }` (`requestController.createRequest`). */
+function bridgeErrorCode(reason: unknown): string | undefined {
+  if (typeof reason !== 'object' || reason === null || !('error' in reason)) return undefined;
+  const error: unknown = reason.error;
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
+  return typeof error.code === 'string' ? error.code : undefined;
+}
+
+/**
+ * Открывает сканер QR MAX и возвращает итог. Отказ промиса (пользователь закрыл сканер, таймаут) — `cancelled` с кодом
+ * MAX, если он есть; ответ без текста — `failed` с кратким содержимым ответа, чтобы его можно было сообщить.
  * @param win окно (инъекция для тестов).
  */
-export async function scanQr(win: Window = window): Promise<string | undefined> {
+export async function scanQr(win: Window = window): Promise<ScanResult> {
   const read = canScanQr(win) ? getWebApp(win)?.openCodeReader : undefined;
   if (read === undefined) {
-    return undefined;
+    return { kind: 'failed', detail: 'сканер QR доступен только в мобильном приложении MAX' };
   }
+  let result: unknown;
   try {
-    const text = (await read(true)).trim();
-    return text === '' ? undefined : text;
-  } catch {
-    return undefined;
+    result = await read(true);
+  } catch (reason) {
+    const code = bridgeErrorCode(reason);
+    return code === undefined ? { kind: 'cancelled' } : { kind: 'cancelled', code };
   }
+  const text = qrTextOf(result);
+  if (text !== undefined) {
+    return { kind: 'text', text };
+  }
+  let shown = String(result);
+  try {
+    // Для undefined и функций JSON.stringify возвращает undefined (в lib.d.ts — string), тогда остаётся String().
+    shown = JSON.stringify(result) || shown;
+  } catch {
+    // Циклический объект — достаточно String().
+  }
+  return { kind: 'failed', detail: `ответ сканера без текста кода: ${shown.slice(0, 200)}` };
 }
