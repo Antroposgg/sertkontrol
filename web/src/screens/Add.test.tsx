@@ -106,13 +106,26 @@ describe('Добавить — «Это номер …?»', () => {
 
   it('на телефоне в MAX — «Сканировать QR»: текст кода уходит в проверку', async () => {
     const qr = 'https://pub.fsa.gov.ru/rds/declaration/view/21950326/common';
-    window.WebApp = { platform: 'android', openCodeReader: () => Promise.resolve(qr) };
+    window.WebApp = { platform: 'android', openCodeReader: () => Promise.resolve({ value: qr }) };
     try {
       const api = fakeApi();
       renderWithApi(<Add />, api);
       await userEvent.click(screen.getByRole('button', { name: 'Сканировать QR с выписки' }));
       expect(api.check).toHaveBeenCalledWith(qr);
       expect(await screen.findByRole('article')).toHaveTextContent('Декларация RU Д-CR.PA08.B.89369/26');
+    } finally {
+      delete window.WebApp;
+    }
+  });
+
+  it('сканер закрыт без результата — пояснение на экране', async () => {
+    window.WebApp = { platform: 'ios', openCodeReader: () => Promise.reject(Object.assign(new Error('cancel'), { error: { code: 'client.open_code_reader.cancelled' } })) };
+    try {
+      const api = fakeApi();
+      renderWithApi(<Add />, api);
+      await userEvent.click(screen.getByRole('button', { name: 'Сканировать QR с выписки' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Сканер закрыт без результата (client.open_code_reader.cancelled)');
+      expect(api.check).not.toHaveBeenCalled();
     } finally {
       delete window.WebApp;
     }

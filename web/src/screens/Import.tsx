@@ -1,3 +1,4 @@
+import { Button } from '@maxhub/max-ui';
 import { useState } from 'react';
 
 import { useApi } from '../api/context';
@@ -6,6 +7,22 @@ import { StateView, type ViewState } from '../components/StateView';
 import { toProblemOf } from '../hooks/useResource';
 
 type Result = ViewState<ImportReport> | { kind: 'idle' };
+
+/**
+ * Пример импорта на демо-данных — тот же, что `data/demo/import-example.csv`: совпадающий и чужой поставщик, номер,
+ * которого нет в данных, строки с ошибками. Кнопка нужна, чтобы проверить импорт на телефоне без файла.
+ */
+export const IMPORT_EXAMPLE = `${[
+  'SKU;Номер документа;ИНН поставщика',
+  'ЧАЙНИК-01;ЕАЭС N RU Д-CR.РА08.В.89369/26;7700000016',
+  'ЧАЙНИК-02;ЕАЭС N RU Д-CN.РА01.В.10001/25;7700000023',
+  'ФЕН-03;ЕАЭС N RU Д-TR.РА03.В.10004/24;7700000023',
+  'ЛАМПА-04;ЕАЭС RU С-CN.АЯ46.В.10006/25;',
+  'УТЮГ-05;ЕАЭС N RU Д-CR.РА07.В.89369/26;',
+  'ПЛИТА-06;ЕАЭС N RU Д-RU.РА04.В.10007/23;',
+  'ЧАЙНИК-07;номер потерялся;',
+  'ФЕН-08;ЕАЭС N RU Д-KZ.РА05.В.10009/25;1234567890',
+].join('\n')}\n`;
 
 /** Список строк отчёта «строка N — номер». */
 function Lines({ title, lines }: { title: string; lines: ImportedLine[] }) {
@@ -61,13 +78,12 @@ function Report({ report }: { report: ImportReport }) {
 export function Import() {
   const api = useApi();
   const [result, setResult] = useState<Result>({ kind: 'idle' });
-  const [lastFile, setLastFile] = useState<File | null>(null);
+  const [lastSource, setLastSource] = useState<(() => Promise<string>) | null>(null);
 
-  const upload = (file: File) => {
-    setLastFile(file);
+  const upload = (source: () => Promise<string>) => {
+    setLastSource(() => source);
     setResult({ kind: 'loading' });
-    file
-      .text()
+    source()
       .then((csv) => api.importPortfolio(csv))
       .then(
         (report) => {
@@ -94,17 +110,25 @@ export function Import() {
           aria-label="CSV-файл"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file !== undefined) upload(file);
+            if (file !== undefined) upload(() => file.text());
             e.target.value = '';
           }}
         />
       </label>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          upload(() => Promise.resolve(IMPORT_EXAMPLE));
+        }}
+      >
+        Импортировать пример
+      </Button>
       {result.kind !== 'idle' && (
         <StateView
           state={result}
           emptyText=""
           onRetry={() => {
-            if (lastFile !== null) upload(lastFile);
+            if (lastSource !== null) upload(lastSource);
           }}
         >
           {(report) => <Report report={report} />}

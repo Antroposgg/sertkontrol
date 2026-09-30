@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/problem';
 import { fakeApi } from '../test/fakeApi';
 import { renderWithApi } from '../test/render';
-import { Import } from './Import';
+import { IMPORT_EXAMPLE, Import } from './Import';
 
 const csv = 'SKU;Номер;ИНН\nЧАЙ-01;RU Д-CR.PA08.B.89369/26;7700000023\n';
 
@@ -50,5 +50,15 @@ describe('Импорт', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Повторить' }));
     expect(await screen.findByText('Поставлено на контроль')).toBeInTheDocument();
     expect(importPortfolio).toHaveBeenCalledTimes(2);
+  });
+
+  it('«Импортировать пример» — без файла, тот же текст, что data/demo/import-example.csv', async () => {
+    const api = fakeApi();
+    renderWithApi(<Import />, api);
+    await userEvent.click(screen.getByRole('button', { name: 'Импортировать пример' }));
+    expect(await screen.findByText('Поставлено на контроль')).toBeInTheDocument();
+    expect(api.importPortfolio).toHaveBeenCalledWith(IMPORT_EXAMPLE);
+    expect(IMPORT_EXAMPLE.split('\n')[0]).toBe('SKU;Номер документа;ИНН поставщика');
+    expect(IMPORT_EXAMPLE.trimEnd().split('\n')).toHaveLength(9);
   });
 });
